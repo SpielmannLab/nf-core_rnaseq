@@ -19,7 +19,26 @@ For Nextflow versions newer than 23.07.0-edge, it is necessary to mount the home
 ```bash
 NXF_SINGULARITY_HOME_MOUNT=true
 ```
+After downloading the configuration file `uzl_omics_nf-core.config` You can use the following bash-script as an example
 
+```bash
+#!/bin/bash
+
+#SBATCH -c 1
+#SBATCH --mem=10GB
+#SBATCH --partition=shortterm
+
+PATH=$WORK/.omics/miniforge3/bin:$PATH 
+source $WORK/.omics/miniforge3/etc/profile.d/conda.sh  
+conda activate YOUR_NEXTFLOW_ENV
+module load singularity
+cd PATH_TO_YOUR_LAUNCHDIR 
+export NXF_SINGULARITY_HOME_MOUNT=true 
+nextflow run nf-core/rnaseq \
+    --outdir $WORK/rnaseq_nfcore_outdir\
+    -c PATH_TO_YOUR_CONFIG_FILE \
+    -params-file PATH_TO_YOUR_PARAMS_FILE
+```
 
 ## Below are non-mandatory information
 
