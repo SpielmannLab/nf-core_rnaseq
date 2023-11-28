@@ -35,8 +35,8 @@ module load singularity
 cd PATH_TO_YOUR_LAUNCHDIR 
 export NXF_SINGULARITY_HOME_MOUNT=true 
 nextflow run nf-core/rnaseq \
-    --outdir $WORK/rnaseq_nfcore_outdir\
-    -c PATH_TO_YOUR_CONFIG_FILE \
+    --outdir $WORK/rnaseq_nfcore_outdir \
+    -profile uzl_omics \
     -params-file PATH_TO_YOUR_PARAMS_FILE
 ```
 
