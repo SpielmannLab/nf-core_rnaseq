@@ -19,7 +19,7 @@ For Nextflow versions newer than 23.07.0-edge, it is necessary to mount the home
 ```bash
 NXF_SINGULARITY_HOME_MOUNT=true
 ```
-After downloading the configuration file `uzl_omics_nf-core.config` You can use the following bash-script as an example
+You can use the following bash-script as an example:
 
 ```bash
 #!/bin/bash
