@@ -1,25 +1,24 @@
 # nf-core/configs: UzL OMICS Cluster Configuration
 
 The rnaseq nf-core pipeline has been successfully configured for use on the UzL OMICS cluster at the University of Luebeck.
-Implementation of nf-core pipelines for use on the UzL OMICS is in process. 
 
-To use, run the pipeline with `-profile uzl_omics`. This will download and launch the `uzl_omics.config` which has been pre-configured with a setup suitable for the UzL OMICS cluster. Using this profile, a docker image containing all of the required software will be downloaded, and converted to a Singularity image before execution of the pipeline.
+To use, run any nf-core pipeline with `-profile uzl_omics`. This will download and launch the `uzl_omics.config` which has been pre-configured with a setup suitable for the UzL OMICS cluster. Using this profile, docker images containing the required softwares will be downloaded, and converted to singularity images before execution of the pipeline.
 
-Before running the pipeline you will need to load Nextflow and Singularity using the environment module system on UzL OMICS cluster. You can do this by issuing the commands below:
+## Software dependencies
+Nextflow and Singularity are required to run nf-core scripts. Singularity is available using the environment module system on UzL OMICS cluster and can be made available by issuing the command below:
 
 ```bash
-module load nextflow
 module load singularity
 ```
 
-nf-core requires a Nextflow version 22.10.1 or higher, so you have to intall a more recent version first.
-
-For Nextflow versions newer than 23.07.0-edge, it is necessary to mount the home directory using the command:
+But nf-core requires Nextflow version 22.10.1 or higher, so you have to intall a more recent version first (as of Nov 2023, higher versions are not installed in the cluster). This can be done within a conda environment for example. Note: for Nextflow versions newer than 23.07.0-edge, it is necessary to mount the home directory using the command:
 
 ```bash
 NXF_SINGULARITY_HOME_MOUNT=true
 ```
-You can use the following batch script as an example:
+
+## Running a pipeline
+You can use the following batch script as an example to run a pipeline (example shown is the nf-core/rnaseq pipeline):
 
 ```bash
 #!/bin/bash
@@ -28,10 +27,14 @@ You can use the following batch script as an example:
 #SBATCH --mem=10GB
 #SBATCH --partition=shortterm
 
+# Make conda available within a slurm job within which Nextflow is installed
 PATH=$WORK/.omics/miniforge3/bin:$PATH 
 source $WORK/.omics/miniforge3/etc/profile.d/conda.sh  
 conda activate YOUR_NEXTFLOW_ENV     #you have to activate your environment with a Nextflow version 22.10.1 or higher
+
+
 module load singularity
+
 cd PATH_TO_YOUR_LAUNCHDIR
 export NXF_SINGULARITY_HOME_MOUNT=true 
 nextflow run nf-core/rnaseq \
