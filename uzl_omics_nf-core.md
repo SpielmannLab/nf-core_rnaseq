@@ -14,12 +14,31 @@ module load singularity
 
 nf-core requires a Nextflow version 22.10.1 or higher, so you have to intall a more recent version first.
 
-For Nextflow versions newer than 22.10.1, it is necessary to mount the home directory using the command:
+For Nextflow versions newer than 23.07.0-edge, it is necessary to mount the home directory using the command:
 
 ```bash
 NXF_SINGULARITY_HOME_MOUNT=true
 ```
+You can use the following batch script as an example:
 
+```bash
+#!/bin/bash
+
+#SBATCH -c 1
+#SBATCH --mem=10GB
+#SBATCH --partition=shortterm
+
+PATH=$WORK/.omics/miniforge3/bin:$PATH 
+source $WORK/.omics/miniforge3/etc/profile.d/conda.sh  
+conda activate YOUR_NEXTFLOW_ENV     #you have to activate your environment with a Nextflow version 22.10.1 or higher
+module load singularity
+cd PATH_TO_YOUR_LAUNCHDIR
+export NXF_SINGULARITY_HOME_MOUNT=true 
+nextflow run nf-core/rnaseq \
+    --outdir PATH_TO_YOUR_OUTPUT \
+    -profile uzl_omics \
+    -params-file PATH_TO_YOUR_PARAMS_FILE
+```
 
 ## Below are non-mandatory information
 
