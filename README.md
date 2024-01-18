@@ -1,9 +1,9 @@
 # This repo contains several workflows to perform several tasks:
 
-1. [fastq2counts](fastq2counts), which is our configuration of [nf-core/rnaseq](https://nf-co.re/rnaseq/3.13.2) to generate count matrices from fastq files
-2. [deseq2](deseq2) to perform differential expression analysis using the count matrices
+1. [fastq2counts](#fastq2counts), which is our configuration of [nf-core/rnaseq](https://nf-co.re/rnaseq/3.13.2) to generate count matrices from fastq files
+2. [deseq2](#deseq2) to perform differential expression analysis using the count matrices
 
-## fastq2counts
+## <a name ="fastq2counts"></a> fastq2counts
 
 ### nf-core/configs: UzL OMICS Cluster Configuration
 
@@ -57,7 +57,7 @@ nextflow run nf-core/rnaseq \
 > note:
 > You will need access to the UzL OMICS cluster in order to run the pipeline. In doubt contact IT.
 
-## deseq2
+## <a name ="deseq2"></a> deseq2
 
 Fill out the [parameters file](./deseq2/deseq2_params.yaml) and start the job as follows:
 
