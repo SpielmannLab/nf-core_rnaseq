@@ -9,7 +9,7 @@
 
 The rnaseq nf-core pipeline has been successfully configured for use on the UzL OMICS cluster at the University of Luebeck.
 
-To use, run any nf-core pipeline with `-profile uzl_omics`. This will download and launch the `uzl_omics.config` which has been pre-configured with a setup suitable for the UzL OMICS cluster. Using this profile, docker images containing the required softwares will be downloaded, and converted to singularity images before execution of the pipeline.
+To use, run any nf-core pipeline with `-profile uzl_omics`. This will download and launch a copy of the [UzL OMICS cluster specfic configuration](fastq2counts/uzl_omics_nf-core.config) which has been uploaded to nf-cores repository of many configurations for institutes around the world. Using this profile, docker images containing the required softwares will be downloaded, and converted to singularity images before execution of the pipeline.
 
 ### Software dependencies
 
@@ -25,7 +25,7 @@ But nf-core requires Nextflow version 22.10.1 or higher, so you have to intall a
 NXF_SINGULARITY_HOME_MOUNT=true
 ```
 
-### Running the pipeline
+### Running the pipeline using this configuration
 
 You can use the following batch script as an example to run the pipeline (the example shown for the nf-core/rnaseq pipeline can also be extended to other nf-core pipelines):
 
