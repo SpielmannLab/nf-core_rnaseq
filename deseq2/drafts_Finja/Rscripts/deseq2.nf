@@ -1,17 +1,8 @@
-nextflow.enable.dsl=2
-
-
-params.params_file = "/data/humangen_external/test_area/sygo/project37/for_GitHub/deseq2_params.yaml"
-
-count_data = yaml.parse(file(params.params_file))
-metadata = yaml.parse(file(params.params_file))
-
-comparison_conditions_channel=Channel.from(params_file.comparison_condtitions)
-comparison_conditions.map { folder_name -> conditions_compared = folder_name.conditions_compared }
-other_keys_channel = Channel.from{params_file.other_keys}
-
-
 workflow {
+    comparison_conditions_channel = Channel.fromList(params.comparison_condtitions)
+    comparison_conditions.map { folder_name -> conditions_compared = folder_name.conditions_compared }
+    other_keys_channel = Channel.from{params_file.other_keys}
+
     output_folder()
 
     write_params()
@@ -51,7 +42,7 @@ process write_params{
 
 
 //COLORING !!!!!
-process building_object{
+process building_DDS_obj {
     publishDir params.outdir, mode: 'copy', overwrite: true
     input:
     file(params_file) from params.params_file

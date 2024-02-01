@@ -19,11 +19,9 @@ model_design:
     - reference_condition: "Mutant1"
       alternate_condition: "Mutant3"
       conditions_compared: "Mutant1_vs_Mutant3"
-  # Provide as many other columns containing sample information that could cause variability in expression.
-  other_keys:
-    - "sex"
-    - Age
-    - Batch
+  # Provide as many other columns containing sample information that could cause variability in expression. Comma separated
+other_keys:
+  - "sex,Age,Batch"
 
 # Do you want to detect sample outliers based on Relative Log Fold Expression (RLE) between samples?
 detect_sample_outliers: true # options: <true|false>
