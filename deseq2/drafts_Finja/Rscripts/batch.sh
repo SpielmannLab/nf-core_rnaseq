@@ -1,1 +1,1 @@
-nextflow deseq2.nf -params-file ../deseq2_params.yaml 
+nextflow deseq2.nf -params-file ../deseq2_params.yaml
