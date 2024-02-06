@@ -1,6 +1,6 @@
 "Generate a DDS object from count matrix and sample metadata (coldata) files. Also perform outlier removal based on RLE using the RUV package.
 
-Usage: build_deseq2_object.R --count_data=<value>
+Usage:      Rscript building_deseq2_object.r --count_data=${count_data} --metadata=${metadata} --comparison_key=${comparison_key} --other_keys=${other_keys} --minCounts=${minCounts} --smallestGroupSize=${smallestGroupSize} --detect_sample_outliers=${detect_sample_outliers} --RLE_threshold_max=${RLE_threshold_max}
 
 Options:
     -h --help               	Show this screen.
@@ -18,8 +18,6 @@ Options:
 # loading libraries
 suppressPackageStartupMessages(library(DESeq2))
 suppressPackageStartupMessages(library(dplyr))
-suppressPackageStartupMessages(library(pheatmap))
-suppressPackageStartupMessages(library(sva))
 suppressPackageStartupMessages(library(RUVSeq))
 suppressPackageStartupMessages(library(ggplot2))
 
@@ -50,32 +48,49 @@ message("RLE_threshold_max: ", RLE_threshold_max)
 ###############
 # Figuring out sample-level outliers using plotRLE
 check_n_remove_outliers <- function(cts = cts, coldata = coldata, color = colors_df) {
-    SeqES <- newSeqExpressionSet(round(as.matrix(cts), 0), phenoData = coldata)
-    RLE <- plotRLE(SeqES, outline = FALSE, ylim = c(-4, 4), col = colors_df$color)
-    legend("top", legend = col_df$group, pch = 16, col = col_df$color, cex = .8, ncol = 2, title = "group")
-    rle_stddevs <- apply(RLE, FUN = sd, MARGIN = 2)
-    outliers <- rle_stddevs[rle_stddevs > RLE_threshold_max] %>%
-        names()
-    to_keep <- rle_stddevs[rle_stddevs < RLE_threshold_max] %>%
-        names()
-    return(SeqES[, to_keep])
+  SeqES <- newSeqExpressionSet(round(as.matrix(cts), 0), phenoData = coldata)
+  RLE <- plotRLE(SeqES, outline=FALSE, ylim=c(-4, 4), col = colors_df$color)
+  legend("top", legend = comp_col_df, pch=16, col= col_df$color, cex=.8, ncol=2, title=comparison_key)
+  rle_stddevs <- apply(RLE, FUN = sd, MARGIN = 2) #by columns (MARGIN = 2)
+  outliers <- rle_stddevs[rle_stddevs > 1] %>%
+    names()
+  to_keep <- rle_stddevs[rle_stddevs < 1] %>%
+    names()
+
+  coldata <- coldata[!(rownames(coldata) %in% outliers),]
+  #colors_df <- colors_df[!(rownames(coldata) %in% outliers),]
+  comp_col <- as.factor(coldata[[comparison_key]])
+  #comp_col_df <- col_df[[comparison_key]]
+
+  return(c(SeqES[, to_keep], comp_col, comp_col_df, colors_df, col_df))
 }
 
 ###############
 # Main script
 ###############
 # --- forming count and coldata
-group <- comparison_key
 cts <- read.csv(count_data, sep = "\t", row.names = 1)
 coldata <- read.csv(metadata, row.names = 1) %>%
-    select(any_of(c(group, other_keys)))
+    select(any_of(c(comparison_key, other_keys)))
 # Reordering so that the entries in the metadata and the countdata are in the same order
 cts <- cts[, rownames(coldata)]
 all(rownames(coldata) == colnames(cts))
 
+#following can replace coldata$sex_again
+#coldata[[other_keys[2]]]
+
+# --- setting colors
+comp_col <- as.factor(coldata[[comparison_key]])
+
+colors <- brewer.pal(length(unique(comp_col)), "Set2")
+colors_df <- data.frame(condition = comp_col, color = colors[comp_col])
+col_df <- colors_df %>% distinct(condition, color)
+
+comp_col_df <- as.factor(col_df[[comparison_key]])
+
 
 # --- building DESEq2 DDS object
-design <- paste0("~ ", paste(c(other_keys, group), collapse = " + ")) %>% formula()
+design <- paste0("~ ", paste(c(comparison_key, other_keys), collapse = " + ")) %>% formula()
 dds <- DESeqDataSetFromMatrix(countData = round(cts), colData = coldata, design = design)
 
 # --- Pre-filtering
@@ -91,7 +106,7 @@ if (detect_sample_outliers) {
 
     # using the created function check_n_remove_outliers
     SeqES <- check_n_remove_outliers(cts, coldata)
-    dds <- DESeqDataSetFromMatrix(countData = counts(SeqES), colData = data.frame(phenoData(SeqES)@data), design = ~ sex + group)
+    dds <- DESeqDataSetFromMatrix(countData = counts(SeqES), colData = data.frame(phenoData(SeqES)@data), design = design)
 
     # run DESeq2 without SVA
     dds <- DESeq(dds)
@@ -103,10 +118,11 @@ if (detect_sample_outliers) {
 
     # checking outlier removal
     set <- newSeqExpressionSet(counts(dds), phenoData = data.frame(colData(dds)))
-    RLE <- plotRLE(set, outline = FALSE, ylim = c(-4, 4), col = colors_df$color)
-    legend("top", legend = col_df$group, pch = 16, col = col_df$color, cex = .8, ncol = 2, title = "group")
-
+    RLE <- plotRLE(SeqES, outline=FALSE, ylim=c(-4, 4), col = colors_df$color)
+    legend("top", legend = comp_col_df, pch=16, col= col_df$color, cex=.8, ncol=2, title=comparison_key)
+    
     dev.off()
 }
 
-saveRDS(dds, filename = "DDSobject.rds")
+saveRDS(dds, filename = "dds_obj.rds")
+saveRDS(design, filename = "dds_design.rds")
