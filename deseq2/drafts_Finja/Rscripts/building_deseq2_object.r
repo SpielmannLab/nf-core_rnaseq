@@ -20,6 +20,7 @@ suppressPackageStartupMessages(library(DESeq2))
 suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(RUVSeq))
 suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(RColorBrewer))
 
 ## Getting in arguments
 arguments <- docopt(doc, quoted_args = TRUE)
@@ -47,22 +48,23 @@ message("RLE_threshold_max: ", RLE_threshold_max)
 # Define functions
 ###############
 # Figuring out sample-level outliers using plotRLE
-check_n_remove_outliers <- function(cts = cts, coldata = coldata, color = colors_df) {
-  SeqES <- newSeqExpressionSet(round(as.matrix(cts), 0), phenoData = coldata)
-  RLE <- plotRLE(SeqES, outline=FALSE, ylim=c(-4, 4), col = colors_df$color)
-  legend("top", legend = comp_col_df, pch=16, col= col_df$color, cex=.8, ncol=2, title=comparison_key)
-  rle_stddevs <- apply(RLE, FUN = sd, MARGIN = 2) #by columns (MARGIN = 2)
-  outliers <- rle_stddevs[rle_stddevs > 1] %>%
-    names()
-  to_keep <- rle_stddevs[rle_stddevs < 1] %>%
-    names()
+check_n_remove_outliers <- function(cts = cts, coldata = coldata) {
+    SeqES <- newSeqExpressionSet(round(as.matrix(cts), 0), phenoData = coldata)
 
-  coldata <- coldata[!(rownames(coldata) %in% outliers),]
-  #colors_df <- colors_df[!(rownames(coldata) %in% outliers),]
-  comp_col <- as.factor(coldata[[comparison_key]])
-  #comp_col_df <- col_df[[comparison_key]]
+    RLE_before <- plotRLE(SeqES, outline = FALSE, ylim = c(-4, 4))
 
-  return(c(SeqES[, to_keep], comp_col, comp_col_df, colors_df, col_df))
+    rle_stddevs <- apply(RLE_before, FUN = sd, MARGIN = 2) # by columns (MARGIN = 2)
+    outliers <- rle_stddevs[rle_stddevs > 1] %>%
+        names()
+    to_keep <- rle_stddevs[rle_stddevs < 1] %>%
+        names()
+
+    coldata <- coldata[to_keep, ]
+    SeqES <- SeqES[, to_keep]
+
+    RLE_after <- plotRLE(SeqES, outline = FALSE, ylim = c(-4, 4))
+
+    return(list(SeqES, RLE_before, RLE_after))
 }
 
 ###############
@@ -76,18 +78,15 @@ coldata <- read.csv(metadata, row.names = 1) %>%
 cts <- cts[, rownames(coldata)]
 all(rownames(coldata) == colnames(cts))
 
-#following can replace coldata$sex_again
-#coldata[[other_keys[2]]]
+# following can replace coldata$sex_again
+# coldata[[other_keys[2]]]
 
-# --- setting colors
-comp_col <- as.factor(coldata[[comparison_key]])
-
+# --- adding colors into the dataframe
+comp_col <- unique(coldata[[comparison_key]])
 colors <- brewer.pal(length(unique(comp_col)), "Set2")
-colors_df <- data.frame(condition = comp_col, color = colors[comp_col])
-col_df <- colors_df %>% distinct(condition, color)
-
-comp_col_df <- as.factor(col_df[[comparison_key]])
-
+names(colors) <- comp_col
+coldata <- coldata %>%
+    mutate(color = colors[.data[[comparison_key]]])
 
 # --- building DESEq2 DDS object
 design <- paste0("~ ", paste(c(comparison_key, other_keys), collapse = " + ")) %>% formula()
@@ -101,28 +100,49 @@ dds <- DESeq(dds)
 
 # --- detection and removing of outliers
 if (detect_sample_outliers) {
-    # nameing pdf file
-    pdf("dispersion_plot_before_and_after_outlier_removal.pdf")
 
     # using the created function check_n_remove_outliers
-    SeqES <- check_n_remove_outliers(cts, coldata)
-    dds <- DESeqDataSetFromMatrix(countData = counts(SeqES), colData = data.frame(phenoData(SeqES)@data), design = design)
+    result <- check_n_remove_outliers(cts, coldata)
+    SeqES = result[[1]]
+    RLE_before <- result[[2]]
+    RLE_after <- result[[3]]
 
-    # run DESeq2 without SVA
+    # naming pdf file
+    pdf("dispersion_plot_before_and_after_outlier_removal.pdf")
+    # Plot RLE distribution using ggplot2, before outlier removal
+    df_rle_scores_before <- RLE_before %>%
+        data.frame() %>%
+        tidyr::pivot_longer(cols = where(is.numeric)) %>%
+        mutate(group = coldata[.data$name, comparison_key])
+    plot_before <- ggplot(df_rle_scores_before, aes(x = name, y = value, color = group)) +
+        geom_boxplot(outlier.shape = NA) +
+        scale_color_manual(breaks = coldata[[comparison_key]], values = coldata$color) +
+        ylim(c(-3,3)) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+        ggtitle("RLE scores before outlier removal")
+    df_rle_scores_after <- RLE_after %>%
+        data.frame() %>%
+        tidyr::pivot_longer(cols = where(is.numeric)) %>%
+        mutate(group = coldata[.data$name, comparison_key])
+    plot_after <- ggplot(df_rle_scores_after, aes(x = name, y = value, color = group)) +
+        geom_boxplot(outlier.shape = NA) +
+        scale_color_manual(breaks = coldata[[comparison_key]], values = coldata$color) +
+        ylim(c(-3,3)) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+        ggtitle("RLE scores after outlier removal")
+    print(plot_grid(plot_before, plot_after, nrow = 2))
+
+    # Convert the SeqES object back to dds object and perform DESeq2
+    dds <- DESeqDataSetFromMatrix(countData = counts(SeqES), colData = data.frame(phenoData(SeqES)@data), design = design)
     dds <- DESeq(dds)
 
-    # check dispersion estimate
     if (dispersion) {
         plotDispEsts(dds)
     }
 
-    # checking outlier removal
-    set <- newSeqExpressionSet(counts(dds), phenoData = data.frame(colData(dds)))
-    RLE <- plotRLE(SeqES, outline=FALSE, ylim=c(-4, 4), col = colors_df$color)
-    legend("top", legend = comp_col_df, pch=16, col= col_df$color, cex=.8, ncol=2, title=comparison_key)
-    
     dev.off()
 }
 
 saveRDS(dds, filename = "dds_obj.rds")
 saveRDS(design, filename = "dds_design.rds")
+

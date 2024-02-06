@@ -28,6 +28,11 @@ other_keys:
 # Threshold for p value to determine DEG
 pValue: 0.1
 
+# Filter out genes based on these parameters
+# Only genes with atlesat minCounts in atleast minSamples samples will be kept
+minCounts: 10
+minSamples: 4
+
 # Do you want to detect sample outliers based on Relative Log Fold Expression (RLE) between samples?
 detect_sample_outliers: true # options: <true|false>
 RLE_threshold_max: 1 # Set to a high value to not filter at all, but generate the plot anyway (when, detect_sample_outliers: true)
