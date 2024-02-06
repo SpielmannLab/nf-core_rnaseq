@@ -9,7 +9,7 @@ workflow {
 
     write_params()
 
-    building_object()
+    building_dds_obj(params.count_data, params.metadata, comparison_conditions_channel)
 
     if(!perform_batch_correction){
         batch_correction()
@@ -68,16 +68,17 @@ process write_params{
 process building_dds_obj{
     publishDir params.outdir, mode: 'copy', overwrite: true
     input:
-    tuple path(count_data), path(metadata), val(comparison_key), val(other_keys), val(minCounts), val(smallestGroupSize), val(detect_sample_outliers), val(RLE_threshold_max)
-
+    path count_data
+    path metadata
+    tuple path(count_data), path(metadata), val(comparison_key)
     output:
-    file pdf_dispersion_plot
-    file pdf_pValue_plot
+    path "*.pdf"
+    path "dds_obj.rds", emit: dds_obj
 
-    script:
-    """
-    Rscript building_deseq2_object.r --count_data=${count_data} --metadata=${metadata} --comparison_key=${comparison_key} --other_keys=${other_keys} --minCounts=${minCounts} --smallestGroupSize=${smallestGroupSize} --detect_sample_outliers=${detect_sample_outliers} --RLE_threshold_max=${RLE_threshold_max}
-    """
+    shell:
+    '''
+    building_deseq2_object.r --count_data=!{count_data} --metadata=!{metadata} --comparison_key=!{comparison_key} --other_keys=!{params.other_keys} --minCounts=!{params.minCounts} --smallestGroupSize=!{params.minSamples} --detect_sample_outliers=!{params.detect_sample_outliers} --RLE_threshold_max=!{params.RLE_threshold_max}
+    '''
 }
 
 
