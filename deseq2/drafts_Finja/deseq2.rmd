@@ -49,14 +49,20 @@ if(any(other_keys!=FALSE)){
   other_keys <- other_keys %>%
     strsplit(split = ",") %>%
     unlist()
-} else{
-}
-genes_of_interest <- genes_of_interest %>%
-    strsplit(split = ",") %>%
-    unlist()
+} 
+if(any(genes_of_interest!=FALSE)){
+  genes_of_interest <- genes_of_interest %>%
+      strsplit(split = ",") %>%
+      unlist()
+  }
 perform_batch_correction <- perform_batch_correction %>%
     strsplit(split = ",") %>%
     unlist()
+if(any(counts!=FALSE)){
+  counts <- counts %>%
+      strsplit(split = ",") %>%
+      unlist()
+}
 contrast <- list()
 contrast <- c(comparison_key, reference_condition, alternate_condition)
 ```
@@ -66,7 +72,7 @@ contrast <- c(comparison_key, reference_condition, alternate_condition)
 We read in a count matrix, which we will name `cts`, and the sample information table, which we will name `coldata`. \n 
 We examine the count matrix and column data to see if they are consistent in terms of sample order."
 
-```{r building_object, include=FALSE}
+```{r building_coldata_cts, include=FALSE}
 # --- forming count and coldata
 cts <- read.csv(count_data, sep = "\t", row.names = 1)
 coldata <- read.csv(metadata, row.names = 1) %>%
@@ -198,7 +204,7 @@ With the count matrix, cts, and the sample information, coldata, we can construc
 Here we perform pre-filtering to keep only rows that have a count of at least `r minSamples` for a minimal number of samples
 in at least `r minGroup` groups. 
 
-```{r}
+```{r building_dds}
 if(any(other_keys!=FALSE)){
   design <- paste0("~ ", paste(c(comparison_key, other_keys), collapse = " + ")) %>% formula()
 } else{
@@ -208,13 +214,16 @@ dds <- DESeqDataSetFromMatrix(countData = round(cts), colData = coldata, design 
 # --- Pre-filtering
 keep <- rowSums(counts(dds) >= minSamples) >= minGroup
 dds <- dds[keep, ]
-dds <- DESeq(dds)
 ```
 
 ```{r, echo=TRUE, messages=TRUE}
 design
 dds <- DESeq(dds)
 dds
+```
+
+```{r, message=TRUE}
+message("min_logfc_for_stat_test: ", min_logfc_for_stat_test)
 ```
 
 ```{r results, echo=TRUE, messages=TRUE}
@@ -229,7 +238,7 @@ mcols(res)$description
 
 ## Histogram of p values for all tests.
 
-```{r}
+```{r hist_pvalues}
 hist(res$padj, breaks=0:40/40, main=compared, xlim=c(0,1))
 hist(res$pvalue, breaks=0:40/40, main=compared, xlim=c(0,1))
 ```
@@ -238,14 +247,11 @@ hist(res$pvalue, breaks=0:40/40, main=compared, xlim=c(0,1))
 ### DEG 
 A table with all DEGs is saved as ``r sprintf("DEG_list_%s.xlsx",compared)`` and all genes are saved in ``r sprintf("geneList_%s.xlsx",compared)``.
 
-```{r, messages=TRUE}
+```{r DEG_table, messages=TRUE}
 print(sprintf("DEGs with p-value < %g of %s: %d", pVal,compared,sum(res$padj < pVal, na.rm=TRUE)))
-resNoFilt <- results(dds, independentFiltering=FALSE)
-addmargins(table(filtering=(res$padj < pVal),
-                 noFiltering=(resNoFilt$padj < pVal)))
 ```
 
-```{r DEG}
+```{r DEG_xlsx}
 ###############
 # Define functions
 ###############
@@ -259,26 +265,30 @@ calculate_DEG <- function(res = res, name = name){
     xlsx_DEG <- sprintf("%s/DEG_list_%s.xlsx", outdir, name)
     write_xlsx(DEGs_res, xlsx_DEG)
   }
+  return(list(rownames(DEGs_res)))
   kable(DEGs_res[1:5,], caption="DEG")
+  
 }
+
+listing_genes <- function(res = res, name = name){
+  if(list_all_genes){
+    res_df <- as.data.frame(res)
+    res_df <- res_df %>%
+        mutate(gene_id = c(rownames(res_df))) %>%
+        relocate(gene_id, .before=1)
+    xlsx_allGenes <- sprintf("%s/geneList_%s.xlsx", outdir, name)
+    write_xlsx(res_df, xlsx_allGenes, col_names = TRUE)
+    #write.table
+  }
+}
+#excel table with DEGS
 
 
 ###############
 # Main script
 ###############
-
-if(list_all_genes){
-  res_df <- as.data.frame(res)
-  res_df <- res_df %>%
-      mutate(gene_id = c(rownames(res_df))) %>%
-      relocate(gene_id, .before=1)
-  xlsx_allGenes <- sprintf("%s/geneList_%s.xlsx", outdir, compared)
-  write_xlsx(res_df, xlsx_allGenes, col_names = TRUE)
-  #write.table
-}
-
-#excel table with DEGS
-calculate_DEG(res, compared)
+deg_results <- calculate_DEG(res, compared)
+listing_genes(res, compared)
 
 ```
 
@@ -539,39 +549,70 @@ You can select the gene to plot by rowname or by numeric index.")
 ```
 
 ```{r plot_counts}
+plotting_counts <- function(dds=dds, deg_names = deg_names){
+  if(any(counts != FALSE)){
+  # comparison for significance
+  genes_to_plot <- list()
+  if(any(genes_of_interest==FALSE)){
+    genes_to_plot <- deg_names
+  } else{
+    genes_to_plot <- genes_of_interest
+  }
 
-if(counts){
-# comparison for significance
-compare_groups <- list()
-for(i in 1:length(unique(coldata[[comparison_key]]))){
-  compare_groups[[i]] <- c(unique(coldata[[comparison_key]][[i]]))
-}
-# for significance comparing each with eachother or each with reference grou????
 
-#specific genes
-genes_df <- list()
-genes_length <- length(genes_of_interest)
-for(i in 1:genes_length){
-  genes_df[[i]] <- plotCounts(dds, gene=genes_of_interest[i], intgroup=comparison_key, returnData = TRUE)
-  #genes_df <- gene_counts
-  genes_data <- genes_df[[i]]
-  mean_sd_groups <- genes_data %>%
-      group_by(.data[[comparison_key]]) %>%
-      summarize(
-        mean = mean(count),
-        sd = sd(count))
+  #compare_groups <- list()
+  #for(i in 1:length(unique(coldata[[comparison_key]]))){
+  #  compare_groups[[i]] <- c(unique(coldata[[comparison_key]][[i]]))
+  #}
+  # for significance comparing each with eachother or each with reference grou????
 
-  plot_counts <- ggplot(data=mean_sd_groups, aes(x=.data[[comparison_key]], y=mean, color = .data[[comparison_key]])) +
-    geom_col(data=mean_sd_groups, aes(x=.data[[comparison_key]], y=mean), fill="white") +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
-    labs(x = comparison_key) +
-    geom_point(data = genes_data, aes(x = .data[[comparison_key]], y=count, color = .data[[comparison_key]])) +
-    geom_errorbar(data=mean_sd_groups, aes(x=.data[[comparison_key]], ymin=mean-sd, ymax=mean+sd), width=0.4, alpha=0.9, size=0.5) +
-    scale_color_manual(breaks = coldata[[comparison_key]], values = coldata$color) +
-    ggtitle(genes_of_interest[i])
-  print(plot_counts, ncol=2)
+  #specific genes
+  genes_df <- list()
+  genes_length <- length(genes_to_plot)
+
+if(any(counts == "barplot")){
+  for(i in 1:genes_length){
+    genes_df[[i]] <- plotCounts(dds, gene=genes_to_plot[i], intgroup=comparison_key, returnData = TRUE)
+    #genes_df <- gene_counts
+    genes_data <- genes_df[[i]]
+    mean_sd_groups <- genes_data %>%
+        group_by(.data[[comparison_key]]) %>%
+        summarize(
+          mean = mean(count),
+          sd = sd(count))
+    plot_counts <- ggplot(data=mean_sd_groups, aes(x=.data[[comparison_key]], y=mean, color = .data[[comparison_key]])) +
+        geom_col(data=mean_sd_groups, aes(x=.data[[comparison_key]], y=mean), fill="white") +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+        labs(x = comparison_key) +
+        geom_point(data = genes_data, aes(x = .data[[comparison_key]], y=count, color = .data[[comparison_key]])) +
+        geom_errorbar(data=mean_sd_groups, aes(x=.data[[comparison_key]], ymin=mean-sd, ymax=mean+sd), width=0.4, alpha=0.9, size=0.5) +
+        scale_color_manual(breaks = coldata[[comparison_key]], values = coldata$color) +
+        ggtitle(genes_to_plot[i])
+      print(plot_counts, ncol=2)
+    }
+  }
+  for(i in 1:genes_length){
+    genes_df[[i]] <- plotCounts(dds, gene=genes_to_plot[i], intgroup=comparison_key, returnData = TRUE)
+    #genes_df <- gene_counts
+    genes_data <- genes_df[[i]]
+    if(any(counts == "boxplot")){
+    plot_box <- ggplot(data=genes_data, aes(x=.data[[comparison_key]], y=count, color=.data[[comparison_key]])) +
+          geom_boxplot(outlier.shape = NA) +
+          labs(x = comparison_key) +
+          geom_point(data = genes_data, aes(x = .data[[comparison_key]], y=count, color = .data[[comparison_key]])) +
+          scale_color_manual(breaks = coldata[[comparison_key]], values = coldata$color) +
+          ggtitle(genes_to_plot[i])
+      print(plot_box)
+    }
+  }
+  }
 }
-}
+```
+
+```{r}
+  #deg_results <- calculate_DEG(res, compared)
+  #deg_names <- deg_results[[1]]
+  #plotting_counts(dds,deg_names)
 ```
 
 ```{r, results='asis'}
@@ -599,6 +640,9 @@ plot(metadata(res)$filterNumRej,
      xlab="quantiles of filter")
 lines(metadata(res)$lo.fit, col="red")
 abline(v=metadata(res)$filterTheta)
+resNoFilt <- results(dds, lfcThreshold=min_logfc_for_stat_test, contrast=contrast, independentFiltering=FALSE)
+addmargins(table(filtering=(res$padj < pVal),
+                 noFiltering=(resNoFilt$padj < pVal)))
 ```
 
 
@@ -675,7 +719,12 @@ if(any(perform_batch_correction == "RUV")){
                  noFiltering=(resNoFilt_ruv$padj < pVal)))
   
   name <- paste0("ruv_",compared)
-  calculate_DEG(res = resruv, name)
+  
+  deg_results_ruv <- calculate_DEG(res = resruv, name)
+  deg_names_ruv <- deg_results_ruv[[1]]
+  plotting_counts(ddsruv,deg_names_ruv)
+  listing_genes(resruv, name)
+
 ```
 
 ```{r, results='asis'}
@@ -747,7 +796,12 @@ we simply add these two surrogate variables as columns to the DESeqDataSet and t
   #dds <- ddssva
   #res <- ressva
   name <- paste0("sva_",compared)
-  calculate_DEG(res = ressva, name)
+  
+  deg_results_sva <- calculate_DEG(res = ressva, name)
+  deg_names_sva <- deg_results_sva[[1]]
+  plotting_counts(ddssva,deg_names_sva)
+  listing_genes(ressva, name)
+
 
 
 ```
