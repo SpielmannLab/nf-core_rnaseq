@@ -7,8 +7,7 @@ output: html_document
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 ```
 
-
-```{r libraries, include = FALSE}
+```{r loading_libraries, include = FALSE}
 #loading libraries
 suppressPackageStartupMessages(library(DESeq2))
 suppressPackageStartupMessages(library(dplyr))
@@ -28,22 +27,35 @@ suppressPackageStartupMessages(library(cowplot))
 suppressPackageStartupMessages(library(knitr))
 ```
 
-```{r, results='asis'}
-cat("### Parameter used for the comparison\n")
-```
+### Parameter used for the comparison\n
+Here are the parameters listed, that are necessary for the comparison. 
 
 ```{r params_used, message=TRUE}
+message("comparison_key: ",comparison_key)
 message("reference_condition: ",reference_condition)
 message("alternate_condition: ",alternate_condition)
-message("comparison_key: ",comparison_key)
 if(any(other_keys!=FALSE)){
-    message("other_keys: ",other_keys)
+  message("other_keys: ",other_keys)
+}
+```
+`r reference_condition` and `r alternate_condition` are groups of `r comparison_key` are compared against each other.
+
+```{r, results='asis'}
+if(any(other_keys!=FALSE)){
+  cat("The comparison also considers `r other_keys` ")
 }
 ```
 
+
+```{r writing_used_params}
+setwd(outdir)
+filename <- sprintf("used_parameters_%s_vs_%s.txt", alternate_condition, reference_condition)
+con <- file(filename, "w")
+write_yaml(params, file=filename)
+close(con)
+```
+
 ```{r modifying_params, include=FALSE}
-#params <- read_yaml("params_deseq2.yaml")
-#list2env(params, envir = environment())
 compared <- sprintf("%s_vs_%s", alternate_condition, reference_condition)
 if(any(other_keys!=FALSE)){
   other_keys <- other_keys %>%
@@ -55,30 +67,27 @@ if(any(genes_of_interest!=FALSE)){
       strsplit(split = ",") %>%
       unlist()
   }
-perform_batch_correction <- perform_batch_correction %>%
-    strsplit(split = ",") %>%
-    unlist()
-if(any(counts!=FALSE)){
-  counts <- counts %>%
+if(any(perform_batch_correction!=FALSE)){
+  perform_batch_correction <- perform_batch_correction %>%
       strsplit(split = ",") %>%
       unlist()
 }
+
 contrast <- list()
 contrast <- c(comparison_key, reference_condition, alternate_condition)
+coef <- sprintf("%s_%s", comparison_key, compared)
 ```
 
-
-### which groups should be compared and with with conditions and batches\n
+### Which groups should be compared and with with conditions and batches
 We read in a count matrix, which we will name `cts`, and the sample information table, which we will name `coldata`. \n 
 We examine the count matrix and column data to see if they are consistent in terms of sample order."
 
-```{r building_coldata_cts, include=FALSE}
+```{r building_coldata_cts, include=FALSE, message=TRUE}
 # --- forming count and coldata
 cts <- read.csv(count_data, sep = "\t", row.names = 1)
 coldata <- read.csv(metadata, row.names = 1) %>%
     select(any_of(c(comparison_key, other_keys)))
-# Reordering so that the entries in the metadata and the countdata are in the same order
-coldata[[comparison_key]] <- as.factor(coldata[[comparison_key]])
+coldata[[comparison_key]] <- as.factor(coldata[[comparison_key]]) # Reordering so that the entries in the metadata and the countdata are in the same order
 if(any(other_keys!=FALSE)){
   for(i in 1:length(other_keys)){
     coldata[[other_keys[i]]] <- as.factor(coldata[[other_keys[i]]])
@@ -86,12 +95,11 @@ if(any(other_keys!=FALSE)){
 }
 coldata[[comparison_key]] <- relevel(coldata[[comparison_key]],ref = reference_condition)
 cts <- cts[, rownames(coldata)]
-all(rownames(coldata) == colnames(cts))
+if(!all(rownames(coldata) == colnames(cts))){
+  stop("Rownames of coldata don't align with colnames of cts. Check the samplenames and their order in metadata and count_data.")
+}
 
-# following can replace coldata$sex_again
-# coldata[[other_keys[2]]]
-
-# --- adding colors into the dataframe
+# --- adding colors into the dataframe coldata
 comp_col <- unique(coldata[[comparison_key]])
 colors <- brewer.pal(length(unique(comp_col)), "Set2")
 names(colors) <- comp_col
@@ -100,40 +108,31 @@ coldata <- coldata %>%
 
 ```
 
-
-```{r, echo=TRUE, messages=TRUE}
-head(cts,2)
-head(coldata,10)
-all(rownames(coldata) == colnames(cts))
+```{r printing_counts_coldata, echo=TRUE, messages=TRUE}
+head(cts,5)
+head(coldata,20)
 ```
-
 
 ```{r, results='asis', eval=detect_sample_outliers}
 cat("##  Filtering and exploratory data analysis\n
 The boxplots of relative log expression (RLE = log-ratio of read count to median read count across sample).")
 ```
 
-```{r outliers, include=FALSE}
+```{r outlier_detection, include=FALSE}
 ###############
 # Define functions
 ###############
 # Figuring out sample-level outliers using plotRLE
 check_n_remove_outliers <- function(cts = cts, coldata = coldata) {
-    #SeqES <- newSeqExpressionSet(round(as.matrix(cts), 0), phenoData = coldata)
-
     RLE_before <- plotRLE(round(as.matrix(cts)), outline = FALSE, ylim = c(-4, 4),returnData=TRUE)
-
-    rle_stddevs <- apply(RLE_before, FUN = sd, MARGIN = 2) # by columns (MARGIN = 2)
+    rle_stddevs <- apply(RLE_before, FUN = sd, MARGIN = 2)
     outliers <- rle_stddevs[rle_stddevs > 1] %>%
         names()
-
     to_keep <- rle_stddevs[rle_stddevs < 1] %>%
         names()
-
     coldata <- coldata[to_keep, ]
     cts <- cts[, to_keep]
     RLE_after <- plotRLE(round(as.matrix(cts)), outline = FALSE, ylim = c(-4, 4))
-
     return(list(RLE_before, RLE_after, coldata, cts))
 }
 
@@ -143,18 +142,15 @@ check_n_remove_outliers <- function(cts = cts, coldata = coldata) {
 
 # --- detection and removing of outliers
 if (detect_sample_outliers) {
-
-    # using the created function check_n_remove_outliers
-    # using the created function check_n_remove_outliers
-    result <- check_n_remove_outliers(cts, coldata)
+    result <- check_n_remove_outliers(cts, coldata) # using the created function check_n_remove_outliers
     RLE_before <- result[[1]]
     RLE_after <- result[[2]]
     coldata <- result[[3]]
     cts <- result[[4]]
     cts <- cts[, rownames(coldata)]
-    all(rownames(coldata) == colnames(cts))
-
-    # naming pdf file
+    if(!all(rownames(coldata) == colnames(cts))){
+      stop("Rownames of coldata don't align with colnames of cts. Check the samplenames and their order in metadata and count_data.")
+    }
     # Plot RLE distribution using ggplot2, before outlier removal
     df_rle_scores_before <- RLE_before %>%
         data.frame() %>%
@@ -176,10 +172,7 @@ if (detect_sample_outliers) {
         ylim(c(-3,3)) +
         theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
         ggtitle("RLE scores after outlier removal")
-    #print(plot_grid(plot_before, plot_after, nrow = 2))
-
 }
-
 ```
 
 ```{r plot_outliers, eval=detect_sample_outliers}
@@ -192,63 +185,69 @@ if (detect_sample_outliers) {
 ```
 
 
-## Differential expression analysis\n
-Results tables are generated using the function results, which extracts a results table with log2 fold changes, 
-p values and adjusted p values. With no additional arguments to results, the log2 fold change and Wald test 
-p value will be for the last variable in the design formula, and if this is a factor, the comparison will be 
-the last level of this variable over the reference level (see previous note on factor levels). 
-However, the order of the variables of the design do not matter so long as the user specifies the comparison 
-to build a results table for, using the name or contrast arguments of results.
+## Differential expression analysis
 With the count matrix, cts, and the sample information, coldata, we can construct a DESeqDataSet.
+The standard differential expression analysis steps are wrapped into a single function, DESeq. 
+The estimation steps performed by this function are described below, in the manual page for ?DESeq and in the Methods section of the DESeq2 publication (Love, Huber, and Anders 2014).
 
-Here we perform pre-filtering to keep only rows that have a count of at least `r minSamples` for a minimal number of samples
-in at least `r minGroup` groups. 
+Here we perform pre-filtering to keep only rows that have a count of at least `r minCounts` for a minimal number of samples
+in at least `r minSamples` groups. 
 
-```{r building_dds}
+```{r building_dds_object}
 if(any(other_keys!=FALSE)){
   design <- paste0("~ ", paste(c(comparison_key, other_keys), collapse = " + ")) %>% formula()
 } else{
   design <- paste0("~ ", comparison_key) %>% formula()
 }
 dds <- DESeqDataSetFromMatrix(countData = round(cts), colData = coldata, design = design)
+
 # --- Pre-filtering
-keep <- rowSums(counts(dds) >= minSamples) >= minGroup
+keep <- rowSums(counts(dds) >= minCounts) >= minSamples
 dds <- dds[keep, ]
 ```
 
-```{r, echo=TRUE, messages=TRUE}
+```{r applying_DESeq, echo=TRUE, messages=TRUE}
 design
 dds <- DESeq(dds)
 dds
 ```
 
+Results tables are generated using the function results, which extracts a results table with log2 fold changes, 
+p values and adjusted p values. With no additional arguments to results, the log2 fold change and Wald test 
+p value will be for the last variable in the design formula, and if this is a factor, the comparison will be 
+the last level of this variable over the reference level (see previous note on factor levels). 
+However, the order of the variables of the design do not matter so long as the user specifies the comparison 
+to build a results table for, using the name or contrast arguments of results.
+
+Provided LFC threshold for the results function:
 ```{r, message=TRUE}
 message("min_logfc_for_stat_test: ", min_logfc_for_stat_test)
 ```
 
 ```{r results, echo=TRUE, messages=TRUE}
-res <- results(dds, lfcThreshold=min_logfc_for_stat_test, contrast=contrast)
+res <- results(dds, alpha=alpha, lfcThreshold=min_logfc_for_stat_test, contrast=contrast)
 res
 ```
 
-Information about which variables and tests were used can be found by calling the function mcols on the results object.
-```{r, echo=TRUE, messages=TRUE}
+More information about the result table. In summary and which variables and tests were used can be found by calling the function mcols on the results object.
+```{r results_description, echo=TRUE, messages=TRUE}
+summary(res)
 mcols(res)$description
 ```
 
 ## Histogram of p values for all tests.
+Showing the histogram of pvalue without adjustment and of adjusted pvalue using the in DESeq2 implemented Benjamini-Hochberg procedure.
 
 ```{r hist_pvalues}
-hist(res$padj, breaks=0:40/40, main=compared, xlim=c(0,1))
-hist(res$pvalue, breaks=0:40/40, main=compared, xlim=c(0,1))
+hist(res$pvalue, breaks=0:40/40, main=sprintf("%s - non-adjusted pvalue",compared), xlim=c(0,1))
+hist(res$padj, breaks=0:40/40, main=sprintf("%s - adjusted pvalue",compared), xlim=c(0,1))
 ```
 
-
-### DEG 
+### DE genes 
 A table with all DEGs is saved as ``r sprintf("DEG_list_%s.xlsx",compared)`` and all genes are saved in ``r sprintf("geneList_%s.xlsx",compared)``.
-
+The amount of adjusted p-values less than `r alpha`
 ```{r DEG_table, messages=TRUE}
-print(sprintf("DEGs with p-value < %g of %s: %d", pVal,compared,sum(res$padj < pVal, na.rm=TRUE)))
+print(sprintf("DEGs with p-value < %g of %s: %d", alpha,compared,sum(res$padj < alpha, na.rm=TRUE)))
 ```
 
 ```{r DEG_xlsx}
@@ -257,7 +256,7 @@ print(sprintf("DEGs with p-value < %g of %s: %d", pVal,compared,sum(res$padj < p
 ###############
 calculate_DEG <- function(res = res, name = name){
   if(list_DEG){
-    DEGs_res <- subset(res, res$padj<pVal & abs(log2FoldChange) > log2fc_threshold_DEG)
+    DEGs_res <- subset(res, res$padj<alpha)
     DEGs_res <- as.data.frame(DEGs_res)
     DEGs_res <- DEGs_res %>%
         mutate(gene_id = c(rownames(DEGs_res))) %>%
@@ -267,7 +266,6 @@ calculate_DEG <- function(res = res, name = name){
   }
   return(list(rownames(DEGs_res)))
   kable(DEGs_res[1:5,], caption="DEG")
-  
 }
 
 listing_genes <- function(res = res, name = name){
@@ -278,20 +276,23 @@ listing_genes <- function(res = res, name = name){
         relocate(gene_id, .before=1)
     xlsx_allGenes <- sprintf("%s/geneList_%s.xlsx", outdir, name)
     write_xlsx(res_df, xlsx_allGenes, col_names = TRUE)
-    #write.table
   }
 }
-#excel table with DEGS
-
 
 ###############
 # Main script
 ###############
-deg_results <- calculate_DEG(res, compared)
-listing_genes(res, compared)
+if(list_DEG){
+  deg_results <- calculate_DEG(res, compared)
+  deg_names <- deg_results[[1]]
+}
+
+if(list_all_genes){
+  listing_genes(res, compared)
+}
+
 
 ```
-
 
 ```{r, results='asis', eval=dispersion}
 cat("## Dispersion plot\n
@@ -303,10 +304,9 @@ The amount of shrinkage can be more or less than seen here, depending on the sam
 the number of coefficients, the row mean and the variability of the gene-wise estimates.")
 ```
 
-```{r dispersion, eval=dispersion}
+```{r dispersion_plot, eval=dispersion}
   plotDispEsts(dds, main=compared)
 ```
-
 
 ```{r, results='asis', eval=mean_vs_sd}
 cat("## Data transformations and visualization\n
@@ -327,11 +327,9 @@ many true differences due to the experimental conditions.")
 ```
 
 ```{r mean_sd, include=FALSE}
-
 ###############
 # define functions
 ###############
-
 mean_sd_plot <- function(obj = obj, used = used){
   plot_mean_sd <- meanSdPlot(assay(obj), plot=FALSE)
   plot <- plot_mean_sd$gg + ggtitle(perform_variance_stabilisation)
@@ -341,65 +339,64 @@ mean_sd_plot <- function(obj = obj, used = used){
 ###############
 # Main script
 ###############
-
-#going back to the folder of the reference condition
-
-
 # --- stabilization 
 if(perform_variance_stabilisation == FALSE){
-      mean_vs_sd_after_stabilisation <- FALSE
-      obj <- dds
-      used <- "no stabilisation"
+  mean_vs_sd_after_stabilisation <- FALSE
+  obj <- dds
+  used <- "no stabilisation"
 } else{
-  #transformations vst, rlog, norm
-  #sd plotting
-  #vst
-    if(perform_variance_stabilisation == "vst"){
-      obj <- vst(dds, blind=do_blind_stabilization)
-      used <- perform_variance_stabilisation
-    }
+# vst
+  if(perform_variance_stabilisation == "vst"){
+    obj <- vst(dds, blind=do_blind_stabilization)
+    used <- perform_variance_stabilisation
+  }
 
-  # rlog
-    if(perform_variance_stabilisation == "rlog"){
-      obj <- rlog(dds, blind=do_blind_stabilization)
-      used <- perform_variance_stabilisation
-    }
+# rlog
+  if(perform_variance_stabilisation == "rlog"){
+    obj <- rlog(dds, blind=do_blind_stabilization)
+    used <- perform_variance_stabilisation
+  }
 
-  #norm
-    if(perform_variance_stabilisation == "norm"){
-      obj <- normTransform(dds)
-      used <- perform_variance_stabilisation
-    }
-} 
-
+# norm
+  if(perform_variance_stabilisation == "norm"){
+    obj <- normTransform(dds)
+    used <- perform_variance_stabilisation
+  }
+}
 ```
+
 ```{r plot_mean_sd, echo=TRUE, eval=mean_vs_sd}
   mean_sd_plot(obj, used)
 ```
 
 ```{r, results='asis', eval=plot_sample_clustering}
 cat("## Heatmap of the count matrix\n
-To explore a count matrix, it is often instructive to look at it as a heatmap.
-Another use of the transformed data is sample clustering. We apply the dist function 
-to the transpose of the transformed count matrix to get sample-to-sample distances.")
+To explore a count matrix, it is often instructive to look at it as a heatmap. ")
 ```
 
 
 ```{r plot_heatmap, eval=plot_sample_clustering}
-  if(any(other_keys!=FALSE)){
-    df <- as.data.frame(colData(dds)[c(comparison_key,other_keys)])
-  } else{
-    df <- as.data.frame(colData(dds)[comparison_key])
-  }
-  select <- order(rowMeans(counts(dds,normalized=TRUE)),decreasing=TRUE)[1:20]
-  sampleDists <- dist(t(assay(dds)))
-  sampleDistMatrix <- as.matrix(sampleDists)
-  rownames(sampleDistMatrix) <- paste(dds[[comparison_key]])
-  colnames(sampleDistMatrix) <- paste(dds[[comparison_key]])
-  if(plot_sample_clustering){
-    heatmap1 <- pheatmap(assay(obj)[select,],cluster_rows=FALSE, show_rownames=TRUE, cluster_cols=TRUE, annotation_col=df, main=sprintf("heatmap - %s",used))
-    heatmap2 <- pheatmap(sampleDistMatrix, clustering_distance_rows=sampleDists, clustering_distance_cols=sampleDists,main=sprintf("Euclidean distance - dds"))
-  }
+if(any(other_keys!=FALSE)){
+  df <- as.data.frame(colData(obj)[c(comparison_key,other_keys)])
+} else{
+  df <- as.data.frame(colData(obj)[comparison_key])
+}
+topVarGenes <- order(-rowVars(assay(obj)))[0:200]
+pheatmap(assay(obj)[topVarGenes,],cluster_rows=FALSE, show_rownames=FALSE, cluster_cols=TRUE, annotation_col=df, main=sprintf("heatmap - %s",used))
+```
+
+```{r, results='asis', eval=plot_sample_clustering}
+cat("## Heatmap of the sample-to-sample distances\n
+Here we produce such a heatmap for various transformations of the data.
+Another use of the transformed data is sample clustering. We apply the dist function to the transpose of the transformed count matrix to get sample-to-sample distances.")
+```
+
+```{r plot_heatmapsample_to_sample_distance, eval=plot_sample_clustering}
+sampleDists <- dist(t(assay(obj)))
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <- paste(obj[[comparison_key]])
+colnames(sampleDistMatrix) <- paste(obj[[comparison_key]])
+pheatmap(sampleDistMatrix, clustering_distance_rows=sampleDists, clustering_distance_cols=sampleDists,main=sprintf("Euclidean distance - %s",used))
 ```
 
 ```{r, results='asis', eval=PCA}
@@ -413,23 +410,28 @@ the overall effect of experimental covariates and batch effects.")
 ###############
 # Define functions
 ###############
-
 perform_pca <- function(pcaData = pcaData, x=x, y=y, title = title){
   percentVar <- round(100 * attr(pcaData, "percentVar"))
+  if(x=="PC1"||y=="PC1"){
+    x_lab <- paste0(x,": ",percentVar[1],"% variance")
+    y_lab <- paste0(y,": ",percentVar[2],"% variance") 
+  } else{
+    x_lab <- paste0(x)
+    y_lab <- paste0(y)
+  }
   if(any(other_keys!=FALSE)){
       pcaData[[other_keys[1]]] <- dds[[other_keys[1]]] %>% as.factor()
       plot_pca <- ggplot(pcaData, aes(x=.data[[x]], y=.data[[y]], color=.data[[comparison_key]], shape=.data[[other_keys[1]]]), returnData=TRUE) +
-        #scale_shape() +
         geom_point(size=3) +
-        xlab(paste0(x,": ",percentVar[1],"% variance")) +
-        ylab(paste0(y,": ",percentVar[2],"% variance")) + 
+        xlab(x_lab) +
+        ylab(y_lab) + 
         coord_fixed() +
         ggtitle(paste0("PCA - ",title))
     } else{
       plot_pca <- ggplot(pcaData, aes(x=.data[[x]], y=.data[[y]], color=.data[[comparison_key]]), returnData=TRUE) +
         geom_point(size=3) +
-        xlab(paste0(x,": ",percentVar[1],"% variance")) +
-        ylab(paste0(y,": ",percentVar[2],"% variance")) + 
+        xlab(x_lab) +
+        ylab(y_lab) + 
         coord_fixed() +
         ggtitle(paste0("PCA - ",title))
     }
@@ -438,9 +440,8 @@ perform_pca <- function(pcaData = pcaData, x=x, y=y, title = title){
 ###############
 # Main script
 ###############
-#dds <- readRDS("dds_obj.rds")
-# --- PCA
 
+# --- PCA
 if(PCA){
   if(any(other_keys!=FALSE)){
     intgroup <- c(comparison_key, other_keys)
@@ -464,7 +465,7 @@ if(PCA){
   } 
   
   if(perform_variance_stabilisation == FALSE){
-    se <- SummarizedExperiment(log2(counts(dds, normalized=TRUE) + 1),colData=colData(dds))
+    se <- SummarizedExperiment(log2(counts(dds, normalized=TRUE)),colData=colData(dds))
     pcaData <- plotPCA(DESeqTransform(se), intgroup=intgroup,returnData=TRUE)
     title <- "dds"
   }
@@ -483,144 +484,139 @@ if(shrink_LFC_using!=FALSE){
   To shrink the LFC, we pass the dds object to the function lfcShrink. 
   Below we specify to use the apeglm method for effect size shrinkage (Zhu, Ibrahim, and Love 2018), which improves on the previous estimator.
   In DESeq2, the function plotMA shows the log2 fold changes attributable to a given variable over the mean of normalized counts for all the samples in the DESeqDataSet. 
-  Points will be colored blue if the adjusted p value is less than `r pVal`. 
+  Points will be colored blue if the adjusted p value is less than", alpha,".
   Points which fall out of the window are plotted as open triangles pointing either up or down.")
 }
 
 ```
 
-```{r lfc_shrink}
+```{r lfc_shrink_MA_plot}
 
-#defining the comparison
-coef <- sprintf("%s_%s", comparison_key, compared)
-
-if(plot_volcano_before_LFCshrink | shrink_LFC_using!=FALSE){
+if(plot_MA_before_LFCshrink | shrink_LFC_using!=FALSE){
 #the function plotMA shows the log2 fold changes attributable to a given variable over the mean of normalized counts for all the samples in the DESeqDataSet
-
-  if(plot_volcano_before_LFCshrink){
-      xlim <- c(1,1e5); ylim <- c(-3,3)
-      volcano_plot_before <- DESeq2::plotMA(res,ylim=c(-5,5), main=paste0(compared, " - no shrinkage"))
+  ylim <- c(-3,3)
+# --- before shrinkage
+  if(plot_MA_before_LFCshrink){  
+    MA_plot_before <- DESeq2::plotMA(res, ylim=ylim, main=paste0(compared, " - no shrinkage"))
+    abline(h=c(-min_logfc_for_stat_test,min_logfc_for_stat_test), col="dodgerblue", lwd=2)
   }
 
 # --- shrinkage
   if(shrink_LFC_using!=FALSE){
-    xlim <- c(1,1e5); ylim <- c(-3,3)
-
     if(shrink_LFC_using == "apeglm"){
-        resLFC <- lfcShrink(dds, coef = coef,type="apeglm", lfcThreshold=min_logfc_for_stat_test)
-        res_shrink <- resLFC
-        if(plot_volcano_after_LFCshrink){
-            volcano_plot_after <- DESeq2::plotMA(resLFC,ylim=c(-5,5), main=paste0(compared, " - apeglm"))
-            abline(h=c(-min_logfc_for_stat_test,min_logfc_for_stat_test), col="dodgerblue", lwd=2)
-        }
+      resLFC <- lfcShrink(dds, coef = coef,type="apeglm", lfcThreshold=min_logfc_for_stat_test)
+      res_shrink <- resLFC
+      if(plot_MA_after_LFCshrink){
+        MA_plot_after <- DESeq2::plotMA(resLFC, ylim=ylim, main=paste0(compared, " - apeglm"))
+        abline(h=c(-min_logfc_for_stat_test,min_logfc_for_stat_test), col="dodgerblue", lwd=2)
+      }
     }
 
     if(shrink_LFC_using == "ashr"){
-        resAsh <- lfcShrink(dds, coef = coef, type="ashr", lfcThreshold=min_logfc_for_stat_test)
-        res_shrink <- resAsh
-        if(plot_volcano_after_LFCshrink){
-            abline(h=c(-min_logfc_for_stat_test,min_logfc_for_stat_test), col="dodgerblue", lwd=2)
-            volcano_plot_after <- DESeq2::plotMA(resAsh,ylim=c(-5,5), main=paste0(compared, " - ashr"))
-        }
+      resAsh <- lfcShrink(dds, coef = coef, type="ashr", lfcThreshold=min_logfc_for_stat_test)
+      res_shrink <- resAsh
+      if(plot_MA_after_LFCshrink){
+        MA_plot_after <- DESeq2::plotMA(resAsh, ylim=ylim, main=paste0(compared, " - ashr"))
+        abline(h=c(-min_logfc_for_stat_test,min_logfc_for_stat_test), col="dodgerblue", lwd=2)
+      }
     }
 
     if(shrink_LFC_using == "normal"){
-        resNorm <- lfcShrink(dds, coef = coef, type="normal", lfcThreshold=min_logfc_for_stat_test)
-        res_shrink <- resNorm
-        if(plot_volcano_after_LFCshrink){
-            abline(h=c(-min_logfc_for_stat_test,min_logfc_for_stat_test), col="dodgerblue", lwd=2)
-            volcano_plot_after <- DESeq2::plotMA(resNorm,ylim=c(-5,5), main=paste0(compared, " - normal"))
-        }
+      resNorm <- lfcShrink(dds, coef = coef, type="normal", lfcThreshold=min_logfc_for_stat_test)
+      res_shrink <- resNorm
+      if(plot_MA_after_LFCshrink){
+        MA_plot_after <- DESeq2::plotMA(resNorm, ylim=ylim, main=paste0(compared, " - normal"))
+        abline(h=c(-min_logfc_for_stat_test,min_logfc_for_stat_test), col="dodgerblue", lwd=2)
+      }
     }
-    #saveRDS(res_shrink, filename = "dds_results_shrink.rds")
-    print(plot_grid(volcano_plot_before, volcano_plot_after, ncol = 2))
+    print(plot_grid(MA_plot_before, MA_plot_after, ncol = 2))
   }
 }
 ```
 
+```{r, results='asis', eval=volcano}
+cat("## Volcano plot\n")
+```
+
+```{r volcano plots, eval=volcano}
+plot(res$log2FoldChange, -log10(res$padj), panel.first=grid(),
+  main="Volcano plot", xlab="Effect size: log2(fold-change)", ylab="-log10(adjusted p-value)", xlim=c(-4,4), pch=20, cex=0.6)
+```
+
 ```{r, results='asis', eval=counts}
-cat("Plot counts \n
+if(any(counts != FALSE)){
+cat("## Plot counts \n
 It can also be useful to examine the counts of reads for a single gene across the groups. 
 A simple function for making this plot is plotCounts, which normalizes counts by the estimated size factors 
 (or normalization factors if these were used) and adds a pseudocount of 1/2 to allow for log scale plotting. 
 The counts are grouped by the variables in intgroup, where more than one variable can be specified. 
 Here we specify the gene which had the smallest p value from the results table created above. 
 You can select the gene to plot by rowname or by numeric index.")
+}
 ```
 
-```{r plot_counts}
+```{r counts}
 plotting_counts <- function(dds=dds, deg_names = deg_names){
   if(any(counts != FALSE)){
-  # comparison for significance
-  genes_to_plot <- list()
-  if(any(genes_of_interest==FALSE)){
-    genes_to_plot <- deg_names
-  } else{
-    genes_to_plot <- genes_of_interest
-  }
-
-
-  #compare_groups <- list()
-  #for(i in 1:length(unique(coldata[[comparison_key]]))){
-  #  compare_groups[[i]] <- c(unique(coldata[[comparison_key]][[i]]))
-  #}
-  # for significance comparing each with eachother or each with reference grou????
-
-  #specific genes
-  genes_df <- list()
-  genes_length <- length(genes_to_plot)
-
-if(any(counts == "barplot")){
-  for(i in 1:genes_length){
-    genes_df[[i]] <- plotCounts(dds, gene=genes_to_plot[i], intgroup=comparison_key, returnData = TRUE)
-    #genes_df <- gene_counts
-    genes_data <- genes_df[[i]]
-    mean_sd_groups <- genes_data %>%
-        group_by(.data[[comparison_key]]) %>%
-        summarize(
-          mean = mean(count),
-          sd = sd(count))
-    plot_counts <- ggplot(data=mean_sd_groups, aes(x=.data[[comparison_key]], y=mean, color = .data[[comparison_key]])) +
-        geom_col(data=mean_sd_groups, aes(x=.data[[comparison_key]], y=mean), fill="white") +
-        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
-        labs(x = comparison_key) +
-        geom_point(data = genes_data, aes(x = .data[[comparison_key]], y=count, color = .data[[comparison_key]])) +
-        geom_errorbar(data=mean_sd_groups, aes(x=.data[[comparison_key]], ymin=mean-sd, ymax=mean+sd), width=0.4, alpha=0.9, size=0.5) +
-        scale_color_manual(breaks = coldata[[comparison_key]], values = coldata$color) +
-        ggtitle(genes_to_plot[i])
-      print(plot_counts, ncol=2)
+    genes_to_plot <- list()
+    if(any(genes_of_interest==FALSE)){
+      genes_to_plot <- deg_names
+    } else{
+      genes_to_plot <- genes_of_interest
     }
-  }
-  for(i in 1:genes_length){
-    genes_df[[i]] <- plotCounts(dds, gene=genes_to_plot[i], intgroup=comparison_key, returnData = TRUE)
-    #genes_df <- gene_counts
-    genes_data <- genes_df[[i]]
+    genes_df <- list()
+    genes_length <- length(genes_to_plot)
+
+    if(any(counts == "barplot")){
+      for(i in 1:genes_length){
+        genes_df[[i]] <- plotCounts(dds, gene=genes_to_plot[i], intgroup=comparison_key, returnData = TRUE)
+        genes_data <- genes_df[[i]]
+        mean_sd_groups <- genes_data %>%
+            group_by(.data[[comparison_key]]) %>%
+            summarize(mean = mean(count), sd = sd(count))
+        plot_counts <- ggplot(data=mean_sd_groups, aes(x=.data[[comparison_key]], y=mean, color = .data[[comparison_key]])) +
+          geom_col(data=mean_sd_groups, aes(x=.data[[comparison_key]], y=mean), fill="white") +
+          theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+          labs(x = comparison_key) +
+          geom_point(data = genes_data, aes(x = .data[[comparison_key]], y=count, color = .data[[comparison_key]])) +
+          geom_errorbar(data=mean_sd_groups, aes(x=.data[[comparison_key]], ymin=mean-sd, ymax=mean+sd), width=0.4, alpha=0.9, size=0.5) +
+          scale_color_manual(breaks = coldata[[comparison_key]], values = coldata$color) +
+          ggtitle(genes_to_plot[i])
+        print(plot_counts, ncol=2)
+      }
+    }
     if(any(counts == "boxplot")){
-    plot_box <- ggplot(data=genes_data, aes(x=.data[[comparison_key]], y=count, color=.data[[comparison_key]])) +
+      for(i in 1:genes_length){
+        genes_df[[i]] <- plotCounts(dds, gene=genes_to_plot[i], intgroup=comparison_key, returnData = TRUE)
+        genes_data <- genes_df[[i]]
+        plot_box <- ggplot(data=genes_data, aes(x=.data[[comparison_key]], y=count, ymin=0,color=.data[[comparison_key]])) +
           geom_boxplot(outlier.shape = NA) +
           labs(x = comparison_key) +
           geom_point(data = genes_data, aes(x = .data[[comparison_key]], y=count, color = .data[[comparison_key]])) +
           scale_color_manual(breaks = coldata[[comparison_key]], values = coldata$color) +
           ggtitle(genes_to_plot[i])
-      print(plot_box)
+        print(plot_box)
+      }
     }
-  }
   }
 }
 ```
 
-```{r}
-  #deg_results <- calculate_DEG(res, compared)
-  #deg_names <- deg_results[[1]]
-  #plotting_counts(dds,deg_names)
+```{r plot_counts}
+if(any(genes_of_interest!=FALSE)){
+  plotting_counts(dds, genes_of_interest)
+}
 ```
 
 ```{r, results='asis'}
-cat("## Independent Filtering\n
+cat("## Independent Filtering and multiple testing\n
+The goal of independent filtering is to filter out those tests from the procedure that have no, or little chance of showing significant evidence, 
+without even looking at their test statistic. Typically, this results in increased detection power at the same experiment-wide type I error. 
+Here, we measure experiment-wide type I error in terms of the false discovery rate.
+
 The results function of the DESeq2 package performs independent filtering by default using the mean of normalized counts as a filter statistic. 
 A threshold on the filter statistic is found which optimizes the number of adjusted p values lower than a significance level alpha 
 (we use the standard variable name for significance level, though it is unrelated to the dispersion parameter). 
-The theory behind independent filtering is discussed in greater detail below. 
 The adjusted p values for the genes which do not pass the filter threshold are set to NA.
 
 The default independent filtering is performed using the filtered_p function of the genefilter package, 
@@ -634,27 +630,58 @@ is the lowest quantile of the filter for which the number of rejections is withi
 to the peak of a curve fit to the number of rejections over the filter quantiles:")
 ```
 
-```{r}
+```{r independent_filtering}
 plot(metadata(res)$filterNumRej, 
      type="b", ylab="number of rejections",
      xlab="quantiles of filter")
 lines(metadata(res)$lo.fit, col="red")
 abline(v=metadata(res)$filterTheta)
-resNoFilt <- results(dds, lfcThreshold=min_logfc_for_stat_test, contrast=contrast, independentFiltering=FALSE)
-addmargins(table(filtering=(res$padj < pVal),
-                 noFiltering=(resNoFilt$padj < pVal)))
+resNoFilt <- results(dds, alpha=alpha, lfcThreshold=min_logfc_for_stat_test, contrast=contrast, independentFiltering=FALSE)
+addmargins(table(filtering=(res$padj < alpha),
+                 noFiltering=(resNoFilt$padj < alpha)))
 ```
-
 
 ```{r, results='asis'}
-cat("## batch correction")
+cat("A simple filtering criterion readily available in the results object is the mean of normalized counts irrespective of biological condition, 
+and so this is the criterion which is used automatically by the results function to perform independent filtering. Genes with very low counts are not likely 
+to see significant differences typically due to high dispersion. For example, we can plot the -log10 p values from all genes over the normalized mean counts:")
 ```
+
+```{r plot_normCounts_pvalue, eval=normCounts_pvalue}
+plot(res$baseMean+1, -log10(res$pvalue),
+     log="x", xlab="mean of normalized counts",
+     ylab=expression(-log[10](pvalue)),
+     ylim=c(0,30),
+     cex=.4)
+```
+
+```{r, results='asis', eval=count_outlier_detection}
+cat("## Count outlier detection\n
+DESeq2 relies on the negative binomial distribution to make estimates and perform statistical inference on differences. 
+While the negative binomial is versatile in having a mean and dispersion parameter, extreme counts in individual samples might not fit well to the negative binomial. 
+For this reason, we perform automatic detection of count outliers. We use Cook's distance, which is a measure of how much the fitted coefficients would change if an individual sample were removed (Cook 1977). 
+For more on the implementation of Cook's distance see the manual page for the results function. 
+Below we plot the maximum value of Cook's distance for each row over the rank of the test statistic to justify its use as a filtering criterion.")
+```
+
+```{r plot_count_outlier_detection, eval=count_outlier_detection}
+maxCooks <- apply(assays(dds)[["cooks"]],1,max)
+idx <- !is.na(res$stat)
+plot(rank(res$stat[idx]), maxCooks[idx], xlab="rank of Wald statistic", 
+     ylab="maximum Cook's distance per gene",
+     ylim=c(0,5), cex=.4)
+```
+
+```{r, results='asis', eval=perform_batch_correction}
+cat("## Batch correction")
+```
+
 ```{r, results='asis'}
 if(any(perform_batch_correction == "RUV")){
   cat("## RUV \n
   Plots of principal components (PC) reveal a clear need for betwen-sample normalization.
   We can also use the RUV method in the RUVSeq package to detect the hidden batch effects.
-  We can use the RUVg function to estimate factors of unwanted variation, analogous to SVA’s surrogate variables. 
+  We can use the RUVg function to estimate factors of unwanted variation, analogous to SVA's surrogate variables. 
   A difference compared to the SVA procedure, is that we first would run DESeq and results to obtain 
   the p-values for the analysis without knowing about the batches. 
   Supposing that we have this results table `res`, we then pull out a set of empirical control genes 
@@ -663,12 +690,9 @@ if(any(perform_batch_correction == "RUV")){
 ```
 
 ```{r batch_correction_RUV}
-
 # --- Batch correction
 if(any(perform_batch_correction == "RUV")){
-  set <- newSeqExpressionSet(round(as.matrix(cts)))
-  idx <- rowSums(counts(set) > 5) >= 2
-  set <- set[idx, ]
+  set <- newSeqExpressionSet(counts(dds))
   set <- betweenLaneNormalization(set, which = "upper")
   not_sig <- rownames(res)[which(res$pvalue > RUV_threshold_not_sig)]
   empirical <- rownames(set)[rownames(set) %in% not_sig]
@@ -697,26 +721,32 @@ if(any(perform_batch_correction == "RUV")){
 }
 ```
 
-```{r, echo=TRUE, messages=TRUE}
+```{r dds_res_RUV, echo=FALSE, messages=TRUE, eval=perform_batch_correction}
+if(any(perform_batch_correction == "RUV")){
   design(ddsruv)
   ddsruv <- DESeq(ddsruv)
-  resruv <- results(ddsruv, contrast=contrast)
+  resruv <- results(ddsruv, alpha=alpha, contrast=contrast)
   resruv
+}
 ```
 
 
 ```{r, results='asis'}
+if(any(perform_batch_correction == "RUV")){
   cat("We can plot the factors estimated by RUV:")
+}
 ```
 
-```{r}
-  par(mfrow = c(1, 1), mar = c(3,5,3,1))
-  hist(resruv$padj, breaks=0:40/40, main=compared)
+```{r plots_RUV}
+if(any(perform_batch_correction == "RUV")){
   
-  pVal_res <- print(sprintf("DEGs with p-value < %g of %s: %d", pVal,compared,sum(resruv$padj < pVal, na.rm=TRUE)))
-  resNoFilt_ruv <- results(ddsruv, independentFiltering=FALSE)
-  addmargins(table(filtering=(resruv$padj < pVal),
-                 noFiltering=(resNoFilt_ruv$padj < pVal)))
+  hist(resruv$pvalue, breaks=0:40/40, main=sprintf("%s - non-adjusted pvalue",compared))
+  hist(resruv$padj, breaks=0:40/40, main=sprintf("%s - adjusted pvalue",compared))
+
+  alpha_res <- print(sprintf("DEGs with p-value < %g of %s: %d", alpha,compared,sum(resruv$padj < alpha, na.rm=TRUE)))
+  resNoFilt_ruv <- results(ddsruv, alpha=alpha, independentFiltering=FALSE)
+  addmargins(table(filtering=(resruv$padj < alpha),
+                 noFiltering=(resNoFilt_ruv$padj < alpha)))
   
   name <- paste0("ruv_",compared)
   
@@ -724,10 +754,10 @@ if(any(perform_batch_correction == "RUV")){
   deg_names_ruv <- deg_results_ruv[[1]]
   plotting_counts(ddsruv,deg_names_ruv)
   listing_genes(resruv, name)
-
+}
 ```
 
-```{r, results='asis'}
+```{r, results='asis', eval=perform_batch_correction}
 if(any(perform_batch_correction == "SVA")){
   cat("## SVA \n
   Below we obtain a matrix of normalized counts for which the average count across samples is larger than 1. 
@@ -739,16 +769,12 @@ if(any(perform_batch_correction == "SVA")){
 ```{r batch_correction_SVA}
 if(any(perform_batch_correction == "SVA")){
   dat <- counts(dds, normalized = TRUE)
-  idx <- rowMeans(dat) > 1
+  idx <- rowMeans(dat) > 1    #filtering out rows with a mean <= 1
   dat <- dat[idx, ]
   compare_col <- paste0("~ ", paste(comparison_key)) %>% formula()
   mm <- model.matrix(compare_col, colData(dds))
   mm0 <- model.matrix(~ 1, colData(dds))
   sva <- svaseq(dat, mod = mm, mod0 = mm0, n.sv = 2)
-  sva_df <- as.data.frame(sva$sv)
-  #pca_res <- prcomp(sva_df, scale. = TRUE)
-
-  # Change the design to incorporate surrogate variables from SVA analysis
   ddssva <- dds
   ddssva$SV1 <- sva$sv[, 1]
   ddssva$SV2 <- sva$sv[, 2]
@@ -760,9 +786,6 @@ if(any(perform_batch_correction == "SVA")){
   } else{
     design_sva <- paste0("~ ",paste(c(comparison_key, "SV1 + SV2"), collapse = " + ")) %>% formula()
   }
-  #se <- SummarizedExperiment(log2(counts(ddssva, normalized=TRUE) + 1),colData=colData(ddssva))
-  #pcaData <- plotPCA(DESeqTransform(se), intgroup=c(comparison_key, other_keys),returnData=TRUE)
-  #percentVar <- round(100 * attr(coldata_sva, "percentVar"))
   perform_pca(coldata_sva, x = "SV1", y = "SV2", title="SVA")
   
   par(mfrow = c(2, 1), mar = c(3,5,3,1))
@@ -774,36 +797,35 @@ if(any(perform_batch_correction == "SVA")){
 }
 ```
 
-```{r, echo=TRUE, messages=TRUE}
+```{r dds_res_SVA, echo=FALSE, messages=TRUE, eval=perform_batch_correction}
+if(any(perform_batch_correction == "SVA")){
   design(ddssva)
   ddssva <- DESeq(ddssva)
-  ressva <- results(ddssva, contrast=contrast)
+  ressva <- results(ddssva, alpha=alpha, contrast=contrast)
   ressva
+}
 ```
 
-```{r, results='asis'}
+```{r, results='asis', eval=perform_batch_correction}
   cat("Finally, in order to use SVA to remove any effect on the counts from our surrogate variables, 
 we simply add these two surrogate variables as columns to the DESeqDataSet and then add them to the design:")
 ```
-```{r}
-  par(mfrow = c(1, 1), mar = c(3,5,3,1))
-  hist(ressva$padj, breaks=0:40/40, main=compared)
-  
-  pVal_res <- print(sprintf("DEGs with p-value < %g of %s: %d", pVal,compared,sum(ressva$padj < pVal, na.rm=TRUE)))
-  resNoFilt_sva <- results(ddssva, independentFiltering=FALSE)
-  addmargins(table(filtering=(ressva$padj < pVal),
-                 noFiltering=(resNoFilt_sva$padj < pVal)))
-  #dds <- ddssva
-  #res <- ressva
+```{r plots_SVA}
+if(any(perform_batch_correction == "SVA")){
+  hist(ressva$pvalue, breaks=0:40/40, main=sprintf("%s - non-adjusted pvalue",compared))
+  hist(ressva$padj, breaks=0:40/40, main=sprintf("%s - adjusted pvalue",compared))
+
+  alpha_res <- print(sprintf("DEGs with p-value < %g of %s: %d", alpha,compared,sum(ressva$padj < alpha, na.rm=TRUE)))
+  resNoFilt_sva <- results(ddssva, alpha=alpha, independentFiltering=FALSE)
+  addmargins(table(filtering=(ressva$padj < alpha),
+                 noFiltering=(resNoFilt_sva$padj < alpha)))
   name <- paste0("sva_",compared)
   
   deg_results_sva <- calculate_DEG(res = ressva, name)
   deg_names_sva <- deg_results_sva[[1]]
   plotting_counts(ddssva,deg_names_sva)
   listing_genes(ressva, name)
-
-
-
+}
 ```
 
 
