@@ -1,16 +1,16 @@
 # Where the output should be stored
-out_dir: "/data/humangen_external/test_area/sygo/project37/outdir_deseq2" # Full path of the format /*/*/*/# Note, only samplesnames that are matching in the following two files will be kept
+out_dir: "/*/*" # Full path of the format /*/*/* Note, only samplesnames that are matching in the following two files will be kept
 
 # These files are generated from nf-core/rnaseq pipeline
-count_data: "/data/humangen_external/test_area/sygo/project37/salmon.merged.gene_counts_P037_2023.tsv" # Path to a *.tsv file containing raw (unnormalized counts)
+count_data: "/*/*.tsv" # Path to a *.tsv file containing raw (unnormalized counts)
 
 # The annotations for the samples - several criterias are allowed
-metadata: "/data/humangen_external/test_area/sygo/project37/sheets/annotations_sex_P037_2023.csv" # Path to a *tsv file containing the sample metadata.
+metadata: "/*/*.csv" # Path to a *csv file containing the sample metadata.
 
 # Define the main criterion according to which a distinction is to be made
 comparison_key: "condition" # name of the column of the main criterion
-reference_condition: "Mct8_Oatp1c1_DKO" # condition against which the comparison is to be made, needs to be a group of <comparison_key>
-alternate_condition: "Mct8_Oatp1c1_DKO_AAV_Mct8" # condition to be examined compared to the reference_condition, needs to be a group of <comparison_key>
+reference_condition: "A" # condition against which the comparison is to be made, needs to be a group of <comparison_key>
+alternate_condition: "B" # condition to be examined compared to the reference_condition, needs to be a group of <comparison_key>
 # PCA plot, ..., are made with all conditions within <comparison_key> by default
 
 # Provide as many other columns containing sample information that could cause variability in expression. Comma separated
