@@ -1,9 +1,9 @@
 # This repo contains several workflows to perform several tasks:
 
-1. [fastq2counts](#fastq2counts), which is our configuration of [nf-core/rnaseq](https://nf-co.re/rnaseq/3.13.2) to generate count matrices from fastq files
+1. [fastq2counts](#fastq2counts), which is our configuration of [nf-core/rnaseq](https://nf-co.re/rnaseq/3.12.0) to generate count matrices from fastq files
 2. [deseq2](#deseq2) to perform differential expression analysis using the count matrices
 
-## <a name ="fastq2counts"></a> fastq2counts
+# <a name ="fastq2counts"></a> fastq2counts
 
 ### nf-core/configs: UzL OMICS Cluster Configuration
 
@@ -57,10 +57,19 @@ nextflow run nf-core/rnaseq \
 > note:
 > You will need access to the UzL OMICS cluster in order to run the pipeline. In doubt contact IT.
 
-## <a name ="deseq2"></a> deseq2
+# <a name ="deseq2"></a> deseq2
 
-Fill out the [parameters file](./deseq2/deseq2_params.yaml) and start the job as follows:
+Fill out the [parameters file](./deseq2/params_deseq2.yaml) start the job as follows:
 
 ```bash
-sbatch deseq2_sbatch.sh
+Rscript deseq2.R
 ```
+
+By default the R script `deseq2.R` uses the parameters from `params_deseq2.yaml` to execute `deseq.rmd`.
+
+This gives an output folder in the provided outdir named after the comparison provided in the parameters file.
+As output you should receive the DESeq2 report as an an HTML file it this ordner, as well as the used parameters.
+If wanted, .xlsx files including the DESeq2 results for all genes and especially DE genes can be generated before and after potential batch correction.
+
+> note:
+> Make sure to use an unnormalized counts table.
