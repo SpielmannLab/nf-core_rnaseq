@@ -16,6 +16,9 @@ alternate_condition: "B" # condition to be examined compared to the reference_co
 # Provide as many other columns containing sample information that could cause variability in expression. Comma separated
 other_keys: false # The first is used as a second differentiation option in the PCAplot - shown as shapes
 
+# GSEA
+species: "mouse" # which species the pathways for the GSEA should belong to
+
 # Pre-filtering limits
 minSamples: 8 # Minimum amount of samples for which the minimum number of counts applies as a criterion. Should correspond to the smallest number of samples associated with a condition 
 minCounts: 10 # Minimum value of the sum of counts of a gene over the amount of samples provided in <minSamples> (sum of rows)
