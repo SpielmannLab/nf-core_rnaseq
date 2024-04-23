@@ -1,0 +1,43 @@
+# Where the output should be stored
+out_dir: "/*/*" # Full path of the format /*/*/*/# Note, only samplesnames that are matching in the following two files will be kept
+
+# These files are generated from nf-core/rnaseq pipeline
+count_data: "/*/*.tsv" # Path to a *.tsv file containing raw (unnormalized counts)
+
+# The annotations for the samples - several criterias are allowed
+metadata: "/*/*.csv" # Path to a *tsv file containing the sample metadata.
+
+# Define the main criterion according to which a distinction is to be made
+comparison_key: "condition" # name of the column of the main criterion
+reference_condition_A: "A_ref" # condition against which the comparison is to be made, needs to be a group of <comparison_key>
+alternate_condition_A: "A_alt" # condition to be examined compared to the reference_condition, needs to be a group of <comparison_key>
+reference_condition_B: "B_ref" # condition against which the comparison is to be made, needs to be a group of <comparison_key>
+alternate_condition_B: "B_alt" # condition to be examined compared to the reference_condition, needs to be a group of <comparison_key>
+
+
+# Provide as many other columns containing sample information that could cause variability in expression. Comma separated
+other_keys: false # The first is used as a second differentiation option in the PCAplot - shown as shapes
+
+# GSEA
+performing_gsea: true
+species: "mouse" # which species the pathways for the GSEA should belong to
+
+# Do you want to detect sample outliers based on Relative Log Fold Expression (RLE) between samples?
+detect_sample_outliers: true # options: <true|false>
+remove_sample_outliers: true # options: <true|false>
+
+# Filtering limits
+minCounts: 10 # Minimum value of the sum of counts of a gene over the smallest amount of samples within one group (sum of rows)
+
+# Threshold for p value to determine DEG
+alpha: 0.1
+
+# Limit statistical tests to only genes above a certain log-fold-change threshold?
+min_logfc_for_stat_test: 1 # Default is zero. Increase to reduce the number of test and therefore to get more hits
+
+# Do you want to save the results as .xlsx files for all genees and for DE genes?
+list_all_genes: true
+list_DEG: true
+
+# What plots do you want?
+density: true 

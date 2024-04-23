@@ -1,0 +1,583 @@
+---
+title: "Limma report of `r compared_A` vs `r compared_B`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+```{r loading_libraries, include = FALSE}
+#loading libraries
+suppressPackageStartupMessages(library(limma))
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(Glimma))
+suppressPackageStartupMessages(library(RColorBrewer))
+suppressPackageStartupMessages(library(edgeR))
+suppressPackageStartupMessages(library(biomaRt))
+suppressPackageStartupMessages(library(gplots))
+suppressPackageStartupMessages(library(RUVSeq))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(rafalib))
+suppressPackageStartupMessages(library(tidyr))
+suppressPackageStartupMessages(library(cowplot))
+suppressPackageStartupMessages(library(writexl))
+suppressPackageStartupMessages(library(knitr))
+suppressPackageStartupMessages(library(pheatmap))
+suppressPackageStartupMessages(library(fgsea))
+suppressPackageStartupMessages(library(msigdbr))
+```
+
+### Parameter used for the comparison\n
+Here are the parameters listed, that are necessary for the comparison. 
+
+```{r params_used, message=TRUE}
+message("comparison_key: ",comparison_key)
+message("reference_condition_A: ",reference_condition_A)
+message("alternate_condition_A: ",alternate_condition_A)
+message("reference_condition_B: ",reference_condition_B)
+message("alternate_condition_B: ",alternate_condition_B)
+if(any(other_keys!=FALSE)){
+  message("other_keys: ",other_keys)
+}
+```
+
+```{r, results='asis'}
+if(any(other_keys!=FALSE)){
+  cat(sprintf("The comparison also considers", other_keys))
+}
+```
+
+```{r writing_used_params}
+setwd(outdir)
+filename <- sprintf("used_parameters_%s_vs_%s.txt", compared_A, compared_B)
+con <- file(filename, "w")
+write_yaml(params, file=filename)
+close(con)
+```
+
+```{r modifying_params, include=FALSE}
+if(any(other_keys!=FALSE)){
+  other_keys <- other_keys %>%
+    strsplit(split = ",") %>%
+    unlist()
+} 
+```
+
+
+
+### Which groups should be compared and with with conditions and batches
+We read in a count matrix, which we will name `cts`, and the sample information table, which we will name `coldata`. \n 
+We examine the count matrix and column data to see if they are consistent in terms of sample order."
+The counts from all samples were stored in a single file, so the data can be read into R and then converted into a DGEList-object using the DGEList function.
+
+```{r building_coldata_cts, include=FALSE, message=TRUE}
+# --- forming count and coldata
+cts <- read.csv(count_data, sep = "\t", row.names = 1)
+coldata <- read.csv(metadata, row.names = 1) %>%
+    dplyr::select(any_of(c(comparison_key, other_keys))) %>%
+    dplyr::arrange(.data[[comparison_key]])
+coldata[[comparison_key]] <- as.factor(coldata[[comparison_key]]) # Reordering so that the entries in the metadata and the countdata are in the same order
+cts <- DGEList(cts)
+if(any(other_keys!=FALSE)){
+  for(i in 1:length(other_keys)){
+    coldata[[other_keys[i]]] <- as.factor(coldata[[other_keys[i]]])
+    cts$samples[[other_keys]] <- coldata[[other_keys]]
+  }
+}
+#coldata[[comparison_key]] <- relevel(coldata[[comparison_key]],ref = reference_condition)
+
+cts$samples$group <- coldata[[comparison_key]]
+cts$samples$norm.factors <- 1
+cts$counts <- cts$counts[, rownames(coldata)]
+if(!all(rownames(cts$samples[[comparison_key]]) == coldata[[comparison_key]])){
+  stop("Rownames of coldata don't align with colnames of cts. Check the samplenames and their order in metadata and count_data.")
+}
+
+# --- adding colors into the dataframe coldata
+comp_col <- unique(coldata[[comparison_key]])
+colors <- brewer.pal(length(unique(comp_col)), "Set2")
+names(colors) <- comp_col
+coldata <- coldata %>%
+    mutate(color = colors[.data[[comparison_key]]])
+
+```
+
+```{r printing_counts_coldata, echo=TRUE, messages=TRUE}
+head(cts,5)
+head(coldata,20)
+```
+
+```{r creating_comparisons, include=FALSE}
+compared_A <- sprintf("%s-%s", reference_condition_A, alternate_condition_A) # the minus - is needed for makeContrasts function
+compared_B <- sprintf("%s-%s", reference_condition_B, alternate_condition_B)
+
+compared <- c(compared_A, compared_B)
+
+contrast <- sprintf("%s * vs * %s", compared_A, compared_B)
+```
+
+
+```{r , include=FALSE}
+######################################################## functions ########################################################
+```
+
+```{r functions, include=FALSE}
+###############
+# outlier detection
+###############
+# Figuring out sample-level outliers using plotRLE
+check_n_remove_outliers <- function(cts = cts, coldata = coldata) {
+  RLE_before <- plotRLE(round(as.matrix(cts$counts)), outline = FALSE, ylim = c(-4, 4),returnData=TRUE)
+  rle_stddevs <- apply(RLE_before, FUN = sd, MARGIN = 2)
+  outliers <- rle_stddevs[rle_stddevs > 1] %>%
+    names()
+  to_keep <- rle_stddevs[rle_stddevs < 1] %>%
+    names()
+  if(remove_sample_outliers){
+    coldata <- coldata[to_keep, ]
+    cts <- cts[, to_keep]
+  }
+  return(list(RLE_before, coldata, cts, outliers))
+}
+
+###############
+# DE genes table
+###############
+calculate_DEG <- function(res = res, name = name){
+  if(list_DEG){
+    DEGs_res_df <- subset(res, res$adj.P.Val < alpha)
+    DEGs_res_df <- as.data.frame(DEGs_res_df) %>%
+      mutate(gene_name = c(rownames(DEGs_res_df))) %>%
+      relocate(gene_name, .before=1)
+    tsv_DEG <- sprintf("%s/DEG_list_%s.tsv", outdir, name)
+    write.table(DEGs_res, tsv_DEG, sep="\t", row.names = FALSE)
+  }
+}
+
+listing_genes <- function(res = res, name = name){
+  if(list_all_genes){
+    res_df <- as.data.frame(res)  %>%
+        mutate(gene_name = c(rownames(res_df))) %>%
+        relocate(gene_name, .before=1)
+    tsv_allGenes <- sprintf("%s/geneList_%s.tsv", outdir, name)
+    write.table(res_df, tsv_allGenes, sep="\t", row.names = FALSE)
+  }
+  return(tsv_allGenes)
+}
+
+###############
+# PCA
+###############
+perform_pca <- function(pcaData = pcaData, x=x, y=y, title = title){
+  percentVar <- round(100 * attr(pcaData, "percentVar"))
+  if(x=="PC1"||y=="PC1"){
+    x_lab <- paste0(x,": ",percentVar[1],"% variance")
+    y_lab <- paste0(y,": ",percentVar[2],"% variance") 
+  } else{
+    x_lab <- paste0(x)
+    y_lab <- paste0(y)
+  }
+  if(any(other_keys!=FALSE)){
+      pcaData[[other_keys[1]]] <- dds[[other_keys[1]]] %>% as.factor()
+      plot_pca <- ggplot(pcaData, aes(x=.data[[x]], y=.data[[y]], color=.data[[comparison_key]], shape=.data[[other_keys[1]]], label=rownames(coldata)), returnData=TRUE) +
+        geom_point(size=4) +
+        geom_text(size=2,colour="black") +
+        scale_color_manual(breaks = coldata[[comparison_key]], values = coldata$color) +
+        labs(x = x_lab, y = y_lab, title = paste0("PCA - ",title))
+    } else{
+      plot_pca <- ggplot(pcaData, aes(x=.data[[x]], y=.data[[y]], color=.data[[comparison_key]], label=rownames(coldata)), returnData=TRUE) +
+        geom_point(size=4) +
+        geom_text(size=2,colour="black") +
+        scale_color_manual(breaks = coldata[[comparison_key]], values = coldata$color) +
+        labs(x = x_lab, y = y_lab, title = paste0("PCA - ",title))
+    }
+  return(plot_pca)
+}
+
+
+###############
+# density plot
+###############
+
+plotting_density <- function(data = data, cutoff=cutoff, title=title){
+  nsamples <- ncol(data)
+  density_data <- NULL
+  for (i in 1:nsamples){
+    den <- density(data[,i])
+    df <- data.frame(x = den$x, y=den$y, sample=colnames(data)[i])
+    density_data <- rbind(density_data, df)
+  }
+  density_plot <- ggplot(density_data, aes(x=x, y=y, color = sample)) +
+    geom_line() +
+    labs(title = title, x = deparse(substitute(data)), y="Density") +
+    geom_vline(xintercept = cutoff, linetype = "dashed") +
+    annotate("text", x=cutoff, y = max(density_data$y), label=deparse(substitute(cutoff)))
+    theme_minimal()
+  return(density_plot)
+}
+
+
+###############
+# GSEA
+###############
+
+performing_gsea <- function(tsv_allGenes = tsv_allGenes, compared = compared){
+  gene_list <- read.csv(tsv_allGenes, sep="\t")
+
+  gene_list_df <- gene_list %>% 
+    dplyr::select(gene_name, t) %>% 
+    na.omit() %>% 
+    distinct() %>% 
+    group_by(gene_name) %>% 
+    summarize(t=mean(t))
+
+  ranks <- tibble::deframe(gene_list_df)
+
+  all_gene_sets = msigdbr(species = species)
+  head(all_gene_sets)
+
+  msigdbr_list <- split(x = all_gene_sets$gene_symbol, f = all_gene_sets$gs_name)
+  fgseaRes <- fgsea(pathways = msigdbr_list, stats=ranks)
+
+  fgseaResTidy <- fgseaRes %>%
+    as_tibble() %>%
+    arrange(desc(NES))
+
+  length_fgsea <- nrow(fgseaResTidy)
+
+  ggplot(fgseaResTidy[1:10,], aes(reorder(pathway, NES), NES)) +
+    geom_col(aes(fill=padj<alpha)) +
+    labs(x="Pathway", y="Normalized Enrichment Score",
+        title=paste0("pathways NES from GSEA -", compared)) + 
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+    theme_minimal() +
+    coord_fixed()
+
+  ggplot(fgseaResTidy[((length_fgsea-9):length_fgsea),], aes(reorder(pathway, NES), NES)) +
+    geom_col(aes(fill=padj<alpha)) +
+    labs(x="Pathway", y="Normalized Enrichment Score",
+        title="pathways NES from GSEA") + 
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+    theme_minimal() +
+    coord_fixed()
+
+
+}
+
+```
+
+
+
+
+```{r , include=FALSE}
+######################################################## functions ########################################################
+```
+
+
+
+
+```{r, results='asis', eval=detect_sample_outliers}
+cat("##  Filtering and exploratory data analysis\n
+The boxplots of relative log expression (RLE) (log-ratio of read count to median read count across sample).\n
+Detected outliers are marked as transparent bars.")
+```
+
+```{r outlier_detection, include=FALSE}
+
+###############
+# outlier detection
+###############
+
+# --- detection and removing of outliers
+if (detect_sample_outliers) {
+    result <- check_n_remove_outliers(cts, coldata) # using the created function check_n_remove_outliers
+    RLE_before <- result[[1]]
+    cts <- result[[3]]
+    outliers <- result[[4]]
+
+    # Plot RLE distribution using ggplot2, before outlier removal
+    df_rle_scores_before <- RLE_before %>%
+        data.frame() %>%
+        tidyr::pivot_longer(cols = where(is.numeric)) %>%
+        mutate(group = coldata[.data$name, comparison_key], color = coldata[.data$name, "color"]) %>%
+        arrange(coldata[.data$name, comparison_key])
+    df_rle_scores_before$alpha <- ifelse(df_rle_scores_before$name %in% outliers,0.2, 1)
+    df_rle_scores_before$name <- factor(df_rle_scores_before$name, levels = rownames(coldata))
+    plot_before <- ggplot(df_rle_scores_before, aes(x = name, y = value, fill = group, alpha = alpha)) +
+        geom_boxplot(outlier.shape = NA) +
+        scale_alpha(guide = 'none') +
+        scale_fill_manual(breaks = coldata[[comparison_key]], values = coldata$color) +
+        ylim(c(-3,3)) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+        labs(x="sample", y="relative log expression",title = "RLE scores with marked outliers")    
+
+    coldata <- result[[2]]
+    cts$samples[[comparison_key]] <- coldata[[comparison_key]]
+    if(!all(rownames(cts$samples[[comparison_key]]) == coldata[[comparison_key]])){
+      stop("Rownames of coldata don't align with colnames of cts. Check the samplenames and their order in metadata and count_data.")
+    }
+}
+```
+
+```{r plot_outliers, eval=detect_sample_outliers}
+  print(plot_before)
+```
+
+## Data pre-processing
+
+```{r pre-processing}
+cpm <- cpm(cts)
+lcpm <- cpm(cts, log=TRUE)
+mean <- mean(cts$samples$lib.size) * 1e-6
+median <- median(cts$samples$lib.size) * 1e-6
+
+summary(lcpm)
+```
+
+```{r density_plots, eval=density}
+cat("## Removing genes that are lowly expressed \n
+All datasets will include a mix of genes that are expressed and those that are not expressed. 
+Whilst it is of interest to examine genes that are expressed in one condition but not in another, some genes are unexpressed throughout all samples. 
+In fact, 19% of genes in this dataset have zero counts across all nine samples.")
+
+table(rowSums(cts$counts==0)==length(coldata[,1]))
+lcpm_cutoff <- log2(minCounts/median + 2/mean)
+
+plotting_density(lcpm, lcpm_cutoff, title="A. Raw data")
+
+#filtering
+keep_exprs <- filterByExpr(cts, comparison_key=comparison_key, min.count=minCounts)
+cts <- cts[keep_exprs,, keep.lib.sizes=FALSE]   #keep.lib.size=FALSE, the lib.size will be recalculated due to the samples left
+lcpm <- cpm(cts, log=TRUE)   #applying log again after filtering
+plotting_density(lcpm, lcpm_cutoff, title="B. Filtered dat")
+
+```
+
+
+```{r Normalising gene expression distributions}
+# QUESTION: Do we even need these?
+
+cat("## Normalising gene expression distributions \n
+Any plot showing the per sample expression distributions, such as a density or boxplot, is useful in determining whether any samples are dissimilar to others. Distributions of log-CPM values are similar throughout all samples within this dataset (panel B of the figure above).
+")
+
+par(mfrow=c(1,2))
+cts$samples$norm.factors <- 1
+lcpm <- cpm(cts, log=TRUE)
+boxplot(lcpm, las=2, col=coldata$color, main="")
+title(main="A. Unnormalised data",ylab="Log-cpm")
+legend("top", legend = unique(coldata[[comparison_key]]), pch=16, col= unique(colors[coldata[[comparison_key]]]), cex=.8, ncol=2)
+
+cts <- calcNormFactors(cts, method = "TMM")
+lcpm <- cpm(cts, log=TRUE)
+boxplot(lcpm, col=coldata$color, main="", ymin=-5)
+title(main="B. Normalised data",ylab="Log-cpm")
+legend("top", legend = unique(coldata[[comparison_key]]), pch=16, col= unique(colors[coldata[[comparison_key]]]), cex=.8, ncol=2)
+
+```
+
+
+```{r Unsupervised clustering of samples}
+cat("## Unsupervised clustering of samples\n
+The first dimension represents the leading-fold-change that best separates samples and explains the largest proportion of variation in the data, 
+with subsequent dimensions having a smaller effect and being orthogonal to the ones before it. When experimental design involves multiple factors, it is recommended that each factor is examined over several dimensions. 
+If samples cluster by a given factor in any of these dimensions, it suggests that the factor contributes to expression differences and is worth including in the linear modelling. 
+On the other hand, factors that show little or no effect may be left out of downstream analysis.
+")
+plotMDS(lcpm, labels=rownames(coldata), col=coldata$color)
+title(main="A. Sample groups")
+legend("top", legend = unique(coldata[[comparison_key]]), pch=16, col= unique(colors[coldata[[comparison_key]]]), cex=.8, ncol=2)
+if(any(other_keys!=FALSE)){
+  for(i in 1:length(other_keys)){
+    plotMDS(lcpm, labels=coldata[[other_keys[i]]])
+    title(main=sprintf("B. %s",other_keys[i]))
+ }
+}
+```
+
+
+# DE analysis
+## Creating a design matrix and contrasts
+In this study, it is of interest to see which genes are expressed at different levels between the three cell populations profiled. 
+In our analysis, linear models are fitted to the data with the assumption that the underlying data is normally distributed. 
+To get started, a design matrix is set up with both the cell population and sequencing lane (batch) information.
+
+```{r Creating a design matrix and contrasts}
+if(any(other_keys!=FALSE)){
+  design <- paste0("~ 0 +", paste(c(comparison_key, other_keys), collapse = " + ")) %>% formula()
+} else{
+  design <- paste0("~ 0 +", comparison_key) %>% formula()
+}
+design <- model.matrix(design, data=coldata)
+colnames(design) <- gsub(comparison_key, "", colnames(design))
+design
+
+contr.matrix <- makeContrasts(
+  contrasts = compared, 
+  levels = colnames(design))
+contr.matrix
+```
+
+# Removing heteroscedascity from count data
+It has been shown that for RNA-seq count data, the variance is not independent of the mean (Law et al. 2014) 
+this is true of raw counts or when transformed to log-CPM values. Methods that model counts using a Negative Binomial distribution assume a quadratic mean-variance relationship. 
+In limma, linear modelling is carried out on the log-CPM values which are assumed to be normally distributed and the mean-variance relationship is accommodated using precision weights calculated by the voom function.
+```{r Removing heteroscedascity from count data}
+par(mfrow=c(1,2))
+v <- voom(cts, design, plot=TRUE)
+vfit <- lmFit(v, design)
+vfit <- contrasts.fit(vfit, contrasts=contr.matrix)
+efit <- eBayes(vfit)
+plotSA(efit, main="Final model: efit Mean-variance trend")
+summary(decideTests(efit, p.value=alpha, lfc=min_logfc_for_stat_test))
+
+```
+
+## Examining the number of DE genes
+For a quick look at differential expression levels, the number of significantly up- and down-regulated genes can be summarised in a table. 
+
+```{r Examining the number of DE genes}
+par(mfrow=c(1,1))
+tfit <- treat(vfit, lfc=min_logfc_for_stat_test)
+plotSA(tfit, main="Final model: tfit Mean-variance trend")
+
+dt <- decideTests(tfit, p.value=alpha, lfc=min_logfc_for_stat_test)
+summary(dt)
+
+de_common <- which( dt[,1]!=0 & dt[,2]!=0)
+common_genes <- head(tfit$genes[de_common,], n=20)
+vennDiagram(dt[,1:2], circle.col=c("turquoise", "salmon"), names=c("A","B"))
+legend("top", legend = contrast, pch=16, col=c("turquoise", "salmon"), title = contrast)
+
+
+#de_common_df <- data.frame(Contrast=sapply(contrast, toString), Gene=sapply(common_genes, toString))
+
+write.fit(tfit, dt, file="results.txt")
+
+```
+
+## Histogram of p values for all tests.
+
+```{r hist_pvalues, messages=TRUE}
+par(mfrow=c(1,2), mar = c(5,4,4,2))
+hist(efit$p.value[,1], breaks=0:40/40, main=sprintf("%s \n - efit",compared_A), xlim=c(0,1), xlab="p-value")
+hist(efit$p.value[,2], breaks=0:40/40, main=sprintf("%s \n - efit",compared_B), xlim=c(0,1), xlab="p-value")
+print(sprintf("DEGs of efit with p-value < %g of %s: %d", alpha,compared_A,sum(efit$p.value[,1] < alpha, na.rm=TRUE)))
+print(sprintf("DEGs of efit with p-value < %g of %s: %d", alpha,compared_B,sum(efit$p.value[,2] < alpha, na.rm=TRUE)))
+
+hist(tfit$p.value[,1], breaks=0:40/40, main=sprintf("%s \n - tfit",compared_A), xlim=c(0,1), xlab="p-value")
+hist(tfit$p.value[,2], breaks=0:40/40, main=sprintf("%s \n - tfit",compared_B), xlim=c(0,1), xlab="p-value")
+print(sprintf("DEGs of tfit with p-value < %g of %s: %d", alpha,compared_A,sum(tfit$p.value[,1] < alpha, na.rm=TRUE)))
+print(sprintf("DEGs of tfit with p-value < %g of %s: %d", alpha,compared_B,sum(tfit$p.value[,2] < alpha, na.rm=TRUE)))
+
+```
+## Examining individual DE genes from top to bottom
+The top DE genes can be listed using topTreat for results using treat (or topTable for results using eBayes). 
+By default topTreat arranges genes from smallest to largest adjusted p-value with associated gene information, log-FC, average log-CPM, moderated t-statistic, raw and adjusted p-value for each gene. 
+The number of top genes displayed can be specified, where n=Inf includes all genes. Genes Cldn7 and Rasef are amongst the top DE genes for both basal versus LP and basal versus ML.
+```{r Examining individual DE genes from top to bottom}
+cat("### tfit")
+res_A <- topTreat(tfit, coef=1, n=Inf)
+head(res_A)
+res_B <- topTreat(tfit, coef=2, n=Inf)
+head(res_B)
+
+cat("### efit")
+res_A_efit <- topTable(efit, coef=1, n=Inf)
+head(res_A_efit)
+res_B_efit <- topTable(efit, coef=2, n=Inf)
+head(res_B_efit)
+
+```
+
+### DE genes 
+A table with all DEGs is saved as ``r sprintf("DEG_list_%s.xlsx",compared)`` and all genes are saved in ``r sprintf("geneList_%s.xlsx",compared)``.
+The amount of adjusted p-values less than `r alpha`
+
+```{r DEG_xlsx}
+
+###############
+# Main script
+###############
+
+if(list_DEG){
+  deg_results_A <- calculate_DEG(res_A, compared_A)
+  deg_results_B <- calculate_DEG(res_B, compared_B)
+}
+
+if(list_all_genes){
+  all_genes_results_A <- listing_genes(res_A, compared_A)
+  tsv_allGenes_A <- all_genes_results_A[[1]]
+  all_genes_results_B <- listing_genes(res_B, compared_B)
+  tsv_allGenes_B <- all_genes_results_B[[1]]
+}
+
+
+```
+
+# GSEA 
+```{r gsea}
+performing_gsea(tsv_allGenes_A, compared_A)
+performing_gsea(tsv_allGenes_B, compared_B)
+
+#gene sets
+idx <- ids2indices(msigdbr_list,id=rownames(v)) 
+cam_A <- camera(v,idx,design,contrast=contr.matrix[,1])
+head(cam_A,5)
+cam_B <- camera(v,idx,design,contrast=contr.matrix[,2])
+head(cam_B,5)
+
+# ??????
+barcodeplot(efit$t[,1], index=idx[[rownames(cam_A[1,])]], index2=idx[[rownames(cam_A[2,])]], main=compared_A)
+barcodeplot(efit$t[,1], index=idx[[rownames(cam_B[1,])]], index2=idx[[rownames(cam_B[2,])]], main=compared_B)
+```
+
+
+## Useful graphical representations of differential expression results
+To summarise results for all genes visually, mean-difference plots, which display log-FCs from the linear model fit against the average log-CPM values can be generated using the plotMD function, with the differentially expressed genes highlighted.
+```{r Useful graphical representations of differential expression results}
+  plotMD(tfit, column=1, status=dt[,1], main=colnames(tfit)[1], xlim=c(-8,13))
+  glMDPlot(tfit, coef=1, status=dt, main=colnames(tfit)[1], side.main="gene_name", counts=lcpm, groups=comparison_key, launch=FALSE)
+
+  plotMD(tfit, column=2, status=dt[,2], main=colnames(tfit)[2], xlim=c(-8,13))
+  glMDPlot(tfit, coef=2, status=dt, main=colnames(tfit)[2], side.main="gene_name", counts=lcpm, groups=comparison_key, launch=FALSE)
+
+# heatmap
+a_topgenes <- res_A$gene_name[1:100] #first 100 top-ranked genes from a linear model fit
+i_a <- which(v$genes$gene_name %in% a_topgenes)
+mycol <- colorpanel(1000,"blue","white","red")
+heatmap.2(lcpm[i_a,], scale="row",
+   labCol=rownames(coldata), labRow = NULL,
+   col=mycol, trace="none", density.info="none", dendrogram="column", main=compared_A)
+
+b_topgenes <- res_B$gene_name[1:100]
+i_b <- which(v$genes$gene_name %in% b_topgenes)
+mycol <- colorpanel(1000,"blue","white","red")
+heatmap.2(lcpm[i_b,], scale="row",
+  labCol=rownames(coldata), labRow = NULL,
+  col=mycol, trace="none", density.info="none", dendrogram="column", main=compared_B)
+
+ann_colors <- list()
+ann_colors[[comparison_key]] <- colors
+if(any(other_keys!=FALSE)){
+  df <- as.data.frame(coldata[c(comparison_key,other_keys)])
+  for(i in 1:length(other_keys)){
+    other_col <- unique(coldata[[other_keys[i]]])
+    other_color <- brewer.pal(length(unique(other_col)), "Set1")
+    if(length(other_col) < 3){
+      other_color <- other_color[1:2]
+    }
+    names(other_color) <- other_col
+    ann_colors[[other_keys[i]]] <- other_color
+  }
+} else{
+  df <- as.data.frame(coldata[comparison_key])
+}
+
+pheatmap(lcpm[i_b,],cluster_rows=FALSE, show_rownames=TRUE, fontsize_row=5, cluster_cols=TRUE, annotation_col=df, annotation_colors = ann_colors, main=sprintf("heatmap"))
+
+
+
+
+```
