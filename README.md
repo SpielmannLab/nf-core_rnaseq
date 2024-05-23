@@ -63,7 +63,7 @@ Two options are available for the analysis of diffferentially expressed genes, D
 
 ## <a name ="deseq2"></a> deseq2
 
-Fill out the [parameters file](./deseq2/params_deseq2.yaml) start the job as follows:
+Fill out the [parameters file](./deseq2/drafts_Finja/params_deseq2.yaml) start the job as follows:
 
 ```bash
 Rscript deseq2.R
