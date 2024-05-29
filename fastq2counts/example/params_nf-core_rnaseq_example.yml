@@ -1,0 +1,3 @@
+input: PATH/TO/SAMPLESHEET/*.csv
+outdir: PATH/TO/OUTDIR
+genome: GRCm38
