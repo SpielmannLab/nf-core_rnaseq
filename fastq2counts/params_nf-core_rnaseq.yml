@@ -1,0 +1,3 @@
+input: PATH/TO/COUNTS/FILE*.csv
+outdir: PATH/TO/OUTDIR
+genome: # e.g. GRCh38
