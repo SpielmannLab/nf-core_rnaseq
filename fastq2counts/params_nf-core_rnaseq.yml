@@ -1,3 +1,0 @@
-input: PATH/TO/SAMPLESHEET*.csv
-outdir: PATH/TO/OUTDIR
-genome: # e.g. GRCh38
