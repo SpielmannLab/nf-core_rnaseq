@@ -61,7 +61,7 @@ Two options are available for the analysis of diffferentially expressed genes, D
 
 ## <a name ="deseq2"></a> deseq2
 
-Fill out the [parameters file](./deseq2/drafts_Finja/params_deseq2.yaml) start the job as follows:
+Fill out the [parameters file](./de_analysis/deseq2/params_deseq2.yaml) start the job as follows:
 
 ```bash
 Rscript deseq2.R
@@ -78,8 +78,10 @@ If wanted, .xlsx files including the DESeq2 results for all genes and especially
 
 ## <a name ="limma"></a> limma
 
-Similar to the execution of deseq2, the [parameters file](./limma/params_limma.yaml) must be customized. Start the job with the following command:
+Similar to the execution of deseq2, the [parameters file](./de_analysis/limma/params_limma.yaml) must be customized. Start the job with the following command:
 
 ```bash
 Rscript limma.R
 ```
+
+By default the R script `limma.R` uses the parameters from `params_limma.yaml` to execute `limma.rmd`.
