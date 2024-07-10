@@ -1,14 +1,9 @@
-name: deseq2
+name: de_analysis
 channels:
   - conda-forge
   - bioconda
   - defaults
 dependencies:
-  - _libgcc_mutex=0.1=conda_forge
-  - _openmp_mutex=4.5=2_gnu
-  - _r-mutex=1.0.1=anacondar_1
-  - argcomplete=3.1.6=pyhd8ed1ab_0
-  - binutils_impl_linux-64=2.40=hf600244_0
   - bioconductor-annotate=1.78.0=r43hdfd78af_0
   - bioconductor-annotationdbi=1.62.2=r43hdfd78af_0
   - bioconductor-biobase=2.60.0=r43ha9d7317_0
