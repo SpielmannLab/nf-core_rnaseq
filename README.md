@@ -1,7 +1,7 @@
 # This repo contains several workflows to perform several tasks:
 
 1. [fastq2counts](#fastq2counts), which is our configuration of [nf-core/rnaseq](https://nf-co.re/rnaseq/3.12.0) to generate count matrices from fastq files
-2. [deseq2](#deseq2) to perform differential expression analysis with negative binomial distribution using the count matrices
+2. [de_analysis](#DE_analysis) to perform differential expression analysis with [deseq2](#deseq2)  using negative binomial distribution or [limma](#limma)  with linear model using the count matrices
 3. [limma](#limma) to perform differential expression analysis with linear model using the count matrices
 
 # <a name ="fastq2counts"></a> fastq2counts
@@ -57,7 +57,7 @@ nextflow run nf-core/rnaseq \
 > note:
 > You will need access to the UzL OMICS cluster in order to run the pipeline. In doubt contact IT.
 
-# DE analysis
+# <a name ="DE_analysis"></a> de_analysis
 Two options are available for the analysis of diffferentially expressed genes, DESeq2 and Limma. These can be run as described below.
 
 ## <a name ="deseq2"></a> deseq2
