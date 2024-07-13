@@ -96,6 +96,7 @@ if(any(other_keys!=FALSE)){
   }
 }
 coldata[[comparison_key]] <- relevel(coldata[[comparison_key]], ref = reference_condition)
+
 cts <- cts[, rownames(coldata)]
 if(!all(rownames(coldata) == colnames(cts))){
   stop("Rownames of coldata don't align with colnames of cts. Check the samplenames and their order in metadata and count_data.")
@@ -107,6 +108,16 @@ colors <- brewer.pal(length(unique(comp_col)), "Set2")
 names(colors) <- comp_col
 coldata <- coldata %>%
     mutate(color = colors[.data[[comparison_key]]])
+
+
+#color adaping 
+# comp_col <- unique(coldata[[comparison_key]])
+# comp_col <- factor(conditions_ordered)
+# colors <- c("#999999ff","#408002ff","#0f80ffff","#074080ff")
+# names(colors) <- comp_col
+# coldata <- coldata %>%
+#     mutate(color = colors[.data[[comparison_key]]])
+
 
 ```
 
@@ -129,7 +140,7 @@ check_n_remove_outliers <- function(cts = cts, coldata = coldata) {
   rle_stddevs <- apply(RLE_before, FUN = sd, MARGIN = 2)
   outliers <- rle_stddevs[rle_stddevs > 1] %>%
     names()
-  to_keep <- rle_stddevs[rle_stddevs < 1] %>%
+  to_keep <- rle_stddevs[rle_stddevs <= 1] %>%
     names()
   if(remove_sample_outliers){
     coldata <- coldata[to_keep, ]
@@ -150,18 +161,17 @@ calculate_DEG <- function(res = res, name = name){
         mutate(gene_name = c(rownames(DEGs_res))) %>%
         relocate(gene_name, .before=1)
     tsv_DEG <- sprintf("%s/DEG_list_%s.tsv", outdir, name)
-    write.table(DEGs_res, tsv_DEG, sep="\t")
+    write.table(DEGs_res, tsv_DEG, sep="\t", row.names = FALSE)
   }
 }
 
 listing_genes <- function(res = res, name = name){
   if(list_all_genes){
-    res_df <- as.data.frame(res)
-    res_df <- res_df %>%
-        mutate(gene_name = c(rownames(res_df))) %>%
+    res_df <- as.data.frame(res) %>%
+        mutate(gene_name = c(rownames(res))) %>%
         relocate(gene_name, .before=1)
     tsv_allGenes <- sprintf("%s/geneList_%s.tsv", outdir, name)
-    write.table(res_df, tsv_allGenes, sep="\t")
+    write.table(res_df, tsv_allGenes, sep="\t", row.names = FALSE)
   }
   return(tsv_allGenes)
 }
@@ -191,16 +201,32 @@ perform_pca <- function(pcaData = pcaData, x=x, y=y, title = title){
   if(any(other_keys!=FALSE)){
       pcaData[[other_keys[1]]] <- dds[[other_keys[1]]] %>% as.factor()
       plot_pca <- ggplot(pcaData, aes(x=.data[[x]], y=.data[[y]], color=.data[[comparison_key]], shape=.data[[other_keys[1]]], label=rownames(coldata)), returnData=TRUE) +
-        geom_point(size=4) +
-        geom_text(size=2,colour="black") +
+        geom_point(size=8) +
+        geom_text(size=4,colour="black") +
         scale_color_manual(breaks = coldata[[comparison_key]], values = coldata$color) +
-        labs(x = x_lab, y = y_lab, title = paste0("PCA - ",title))
+        labs(x = x_lab, y = y_lab, title = paste0("PCA - DESeq2 - ",title)) +
+        theme_bw()+ 
+        theme(axis.title.x = element_text(size =15),
+          axis.text.x = element_text(size =12, angle=90),
+          axis.text.y = element_text(size =12),
+          axis.title.y = element_text(size = 15, angle = 90),
+          plot.title=element_text(size = 16, face="bold"),
+          legend.title = element_text(size = 14), 
+          legend.text = element_text(size = 12))
     } else{
       plot_pca <- ggplot(pcaData, aes(x=.data[[x]], y=.data[[y]], color=.data[[comparison_key]], label=rownames(coldata)), returnData=TRUE) +
-        geom_point(size=4) +
-        geom_text(size=2,colour="black") +
+        geom_point(size=8) +
+        geom_text(size=4,colour="black") +
         scale_color_manual(breaks = coldata[[comparison_key]], values = coldata$color) +
-        labs(x = x_lab, y = y_lab, title = paste0("PCA - ",title))
+        labs(x = x_lab, y = y_lab, title = paste0("PCA - DESeq2 - ",title))+
+        theme_bw()+ 
+        theme(axis.title.x = element_text(size =15),
+          axis.text.x = element_text(size =12, angle=90),
+          axis.text.y = element_text(size =12),
+          axis.title.y = element_text(size = 15, angle = 90),
+          plot.title=element_text(size = 16, face="bold"),
+          legend.title = element_text(size = 14), 
+          legend.text = element_text(size = 12))
     }
   return(plot_pca)
 }
@@ -236,7 +262,15 @@ plotting_counts <- function(dds=dds, genes_of_interest = genes_of_interest){
           geom_point(data = genes_data, aes(x = .data[[comparison_key]], y=count, fill = .data[[comparison_key]])) +
           geom_errorbar(data=mean_sd_groups, aes(x=.data[[comparison_key]], ymin=mean-sd, ymax=mean+sd), width=0.4, alpha=0.9, size=0.5) +
           scale_fill_manual(breaks = coldata[[comparison_key]], values = coldata$color) +
-          theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) 
+          theme_bw() +
+          theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) + 
+          theme(axis.title.x = element_text(size =15),
+          axis.text.x = element_text(size =12, angle=90),
+          axis.text.y = element_text(size =12),
+          axis.title.y = element_text(size = 15, angle = 90),
+          plot.title=element_text(size = 16, face="bold"),
+          legend.title = element_text(size = 14), 
+          legend.text = element_text(size = 12)) 
         print(plot_counts, ncol=2)
       }
     }
@@ -250,7 +284,16 @@ plotting_counts <- function(dds=dds, genes_of_interest = genes_of_interest){
           labs(x = comparison_key, y="normalized count", title=genes_to_plot[i]) +
           geom_point(data = genes_data, aes(x = .data[[comparison_key]], y=count, fill = .data[[comparison_key]])) +
           scale_fill_manual(breaks = coldata[[comparison_key]], values = coldata$color) +
-          theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) 
+          theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+          theme_bw()+
+          theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) + 
+          theme(axis.title.x = element_text(size =15),
+          axis.text.x = element_text(size =12, angle=90),
+          axis.text.y = element_text(size =12),
+          axis.title.y = element_text(size = 15, angle = 90),
+          plot.title=element_text(size = 16, face="bold"),
+          legend.title = element_text(size = 14), 
+          legend.text = element_text(size = 12))
         print(plot_box)
       }
     }
@@ -276,30 +319,40 @@ if (detect_sample_outliers) {
     RLE_before <- result[[1]]
     cts <- result[[3]]
     outliers <- result[[4]]
-    
+    #ifelse(any(outliers>1), title = "RLE scores", title = "RLE scores with marked outliers")
+
     # Plot RLE distribution using ggplot2, before outlier removal    
     df_rle_scores_before <- RLE_before %>%
         data.frame() %>%
         tidyr::pivot_longer(cols = where(is.numeric)) %>%
-        mutate(group = coldata[.data$name, comparison_key], color = coldata[.data$name, "color"]) %>%
+        mutate(condition = coldata[.data$name, comparison_key], color = coldata[.data$name, "color"]) %>%
         arrange(coldata[.data$name, comparison_key])
     df_rle_scores_before$alpha <- ifelse(df_rle_scores_before$name %in% outliers,0.2, 1)
     df_rle_scores_before$name <- factor(df_rle_scores_before$name, levels = rownames(coldata))
-    plot_before <- ggplot(df_rle_scores_before, aes(x = name, y = value, fill = group, alpha = alpha)) +
+    plot_before <- ggplot(df_rle_scores_before, aes(x = name, y = value, fill = condition, alpha = alpha)) +
         geom_boxplot(outlier.shape = NA) +
         scale_alpha(guide = 'none') +
         scale_fill_manual(breaks = coldata[[comparison_key]], values = coldata$color) +
         ylim(c(-3,3)) +
+        theme_bw() +
         theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
-        labs(x="sample", y="relative log expression",title = "RLE scores with marked outliers")
-}
+        labs(x="sample", y="relative log expression", title = "RLE scores") + 
+        theme(axis.title.x = element_text(size =15),
+          axis.text.x = element_text(size =12, angle=90),
+          axis.text.y = element_text(size =12),
+          axis.title.y = element_text(size = 15, angle = 90),
+          plot.title=element_text(size = 16, face="bold"),
+          legend.title = element_text(size = 14), 
+          legend.text = element_text(size = 12))
     
     coldata <- result[[2]]
+    coldata <- coldata[order(coldata[[comparison_key]]), ]
     cts <- cts[, rownames(coldata)]
     if(!all(rownames(coldata) == colnames(cts))){
       stop("Rownames of coldata don't align with colnames of cts. Check the samplenames and their order in metadata and count_data.")
     }
-
+    
+}
 ```
 
 ```{r building_dds_object}
@@ -321,8 +374,11 @@ dds <- dds[keep, ]
 
 dds <- DESeq(dds)
 
-res <- results(dds, alpha=alpha, lfcThreshold=min_logfc_for_stat_test, contrast=contrast)
+res <- results(dds, alpha=alpha, lfcThreshold=min_logfc_for_stat_test, altHypothesis="greaterAbs", contrast=contrast)
 resOrdered <- res[order(res$padj),]
+
+deg_results <- calculate_DEG(res, compared)
+
 ```
 
 ```{r DEG_xlsx}
@@ -513,19 +569,17 @@ The estimation steps performed by this function are described below, in the manu
 Here we perform pre-filtering to keep only rows that have a count of at least `r minCounts` for a minimal number of samples
 in at least `r minSamples` groups. 
 
-[List of de genes](`r tsv_allGenes`)
-
 ```{r, message = TRUE} 
 message("design: ",design)
 ```
 
 ```{r, results='asis', eval=detect_sample_outliers}
 cat("##  Filtering and exploratory data analysis\n
-The boxplots of relative log expression (RLE) (log-ratio of read count to median read count across sample).\n
+The boxplot of relative log expression (RLE) (log-ratio of read count to median read count across the samples).\n
 Detected outliers are marked as transparent bars.")
 ```
 
-```{r plot_outliers, eval=detect_sample_outliers}
+```{r plot_outliers, fig.width=10, fig.height=6, dpi=300, eval=detect_sample_outliers}
   print(plot_before)
 ```
 
@@ -538,18 +592,24 @@ the overall effect of experimental covariates and batch effects.")
 ```
 
 
-```{r plot_pca, eval=PCA}
+```{r plot_pca, fig.width=8, fig.height=6, dpi=300, eval=PCA}
 
 pcaPlot <- perform_pca(pcaData, x = "PC1", y = "PC2", title)
 print(pcaPlot)
 
 if(any(perform_batch_correction == "RUV")){
-  pcaPlot_ruv <- perform_pca(coldata_ruv, x = "W1", y = "W2", title="RUV")
+  se_ruv <- SummarizedExperiment(log2(counts(ddsruv, normalized=TRUE)),colData=colData(ddsruv))
+  pcaData_ruv <- plotPCA(DESeqTransform(se_ruv), intgroup=intgroup,returnData=TRUE)
+  title <- "dds_ruv"
+  pcaPlot_ruv <- perform_pca(pcaData_ruv, x = "PC1", y = "PC2", title="RUV")
   print(pcaPlot_ruv)
 }
 
 if(any(perform_batch_correction == "SVA")){
-  pcaPlot_sva <- perform_pca(coldata_sva, x = "SV1", y = "SV2", title="SVA")
+  se_sva <- SummarizedExperiment(log2(counts(ddssva, normalized=TRUE)),colData=colData(ddssva))
+  pcaData_sva <- plotPCA(DESeqTransform(se_sva), intgroup=intgroup,returnData=TRUE)
+  title <- "dds_sva"
+  pcaPlot_sva <- perform_pca(pcaData_sva, x = "PC1", y = "PC2", title="SVA")
   print(pcaPlot_sva)
 }
   
@@ -558,28 +618,28 @@ if(any(perform_batch_correction == "SVA")){
 ## Histogram of p values for all tests.
 Showing the histogram of pvalue without adjustment and of adjusted pvalue using the in DESeq2 implemented Benjamini-Hochberg procedure.
 
-```{r hist_pvalues}
+```{r hist_pvalues, fig.width=8, fig.height=6, dpi=300}
 par(mfrow=c(1,2), mar = c(5,4,4,2))
-hist(res$pvalue, breaks=0:40/40, main=sprintf("%s \n - non-adjusted pvalue",compared), xlim=c(0,1), cex.main=.65, xlab="p-value")
-hist(res$padj, breaks=0:40/40, main=sprintf("%s \n - adjusted pvalue",compared), xlim=c(0,1), cex.main=.65, xlab="adjusted p-value")
+hist(res$pvalue, breaks=0:40/40, main=sprintf("%s \n - my analysis \n - non-adjusted pvalue",compared), xlim=c(0,1), cex.main=1, xlab="p-value")
+hist(res$padj, breaks=0:40/40, main=sprintf("%s \n - my analysis \n - adjusted pvalue",compared), xlim=c(0,1), cex.main=1, xlab="adjusted p-value")
+
 ```
 
-```{r, results='asis'}
+```{r plot_RUV, results='asis', fig.width=8, fig.height=6, dpi=300}
 if(any(perform_batch_correction == "RUV")){
   cat("### RUV Histograms \n")
   par(mfrow = c(1, 2))
-  hist(resruv$pvalue, breaks=0:40/40, main=sprintf("%s \n - non-adjusted pvalue - RUV",compared), cex.main=.65, xlab="p-value")
-  hist(resruv$padj, breaks=0:40/40, main=sprintf("%s \n - adjusted pvalue - RUV",compared), cex.main=.65, xlab="adjusted p-value")
+  hist(resruv$pvalue, breaks=0:40/40, main=sprintf("%s - vs -\n %s \n - non-adjusted pvalue - RUV",alternate_condition,reference_condition), cex.main=.8, xlab="p-value")
+  hist(resruv$padj, breaks=0:40/40, main=sprintf("%s - vs -\n %s \n - adjusted pvalue - RUV",alternate_condition,reference_condition), cex.main=.8, xlab="adjusted p-value")
 }
 ```
 
-```{r, results='asis'}
-
+```{r plot_SVA, results='asis', fig.width=8, fig.height=6, dpi=300}
 if(any(perform_batch_correction == "SVA")){
   cat("### SVA Histograms \n")
   par(mfrow = c(1, 2))
-  hist(ressva$pvalue, breaks=0:40/40, main=sprintf("%s \n - non-adjusted pvalue - SVA",compared), cex.main=.65, xlab="p-value")
-  hist(ressva$padj, breaks=0:40/40, main=sprintf("%s \n - adjusted pvalue - SVA",compared), cex.main=.65, xlab="adjusted p-value")
+  hist(ressva$pvalue, breaks=0:40/40, main=sprintf("%s - vs -\n %s \n - non-adjusted pvalue - SVA",alternate_condition,reference_condition), cex.main=.9, xlab="p-value")
+  hist(ressva$padj, breaks=0:40/40, main=sprintf("%s - vs -\n %s \n - adjusted pvalue - SVA",alternate_condition,reference_condition), cex.main=.9, xlab="adjusted p-value")
 }
 ```
 
@@ -587,8 +647,21 @@ if(any(perform_batch_correction == "SVA")){
 A table with all DEGs is saved as ``r sprintf("DEG_list_%s.xlsx",compared)`` and all genes are saved in ``r sprintf("geneList_%s.xlsx",compared)``.
 The amount of adjusted p-values less than `r alpha`
 ```{r DEG_table, messages=TRUE}
+cat("without batch correction \n")
 print(sprintf("DEGs with adjusted p-value < %g of %s: %d", alpha,compared,sum(res$padj < alpha, na.rm=TRUE)))
 print(sprintf("DEGs with non-adjusted p-value < %g of %s: %d", alpha,compared,sum(res$pvalue < alpha, na.rm=TRUE)))
+
+if(any(perform_batch_correction == "RUV")){
+cat("RUV \n")
+print(sprintf("DEGs with adjusted p-value < %g after batch correction using RUV of %s: %d", alpha,compared,sum(resruv$padj < alpha, na.rm=TRUE)))
+print(sprintf("DEGs with non-adjusted p-value < %g after batch correction using RUV of %s: %d", alpha,compared,sum(resruv$pvalue < alpha, na.rm=TRUE)))
+}
+
+if(any(perform_batch_correction == "SVA")){
+cat("SVA \n")
+print(sprintf("DEGs with adjusted p-value < %g after batch correction using SVA of %s: %d", alpha,compared,sum(ressva$padj < alpha, na.rm=TRUE)))
+print(sprintf("DEGs with non-adjusted p-value < %g after batch correction using SVA of %s: %d", alpha,compared,sum(ressva$pvalue < alpha, na.rm=TRUE)))
+}
 ```
 
 
@@ -605,7 +678,7 @@ if(shrink_LFC_using!=FALSE){
 
 ```
 
-```{r lfc_shrink_MA_ploting}
+```{r lfc_shrink_MA_ploting, fig.width=10, fig.height=6, dpi=300}
 par(mfrow=c(1,2), mar = c(5,4,4,2))
 
 if(plot_MA_before_LFCshrink | shrink_LFC_using!=FALSE){
@@ -657,7 +730,7 @@ You can select the gene to plot by rowname or by numeric index.")
 ```
 
 
-```{r plot_counts}
+```{r plot_counts, fig.width=10, fig.height=6, dpi=300}
 if(any(counts!=FALSE)){
   par(mfrow = c(3, 1), mar = c(3,5,3,1))
   plotting_counts(dds, genes_of_interest)
@@ -670,7 +743,7 @@ To explore a count matrix, it is often instructive to look at it as a heatmap. "
 ```
 
 
-```{r plot_heatmap, eval=plot_sample_clustering}
+```{r plot_heatmap, eval=plot_sample_clustering, fig.width=8, fig.height=6, dpi=300}
 ann_colors <- list()
 ann_colors[[comparison_key]] <- colors
 if(any(other_keys!=FALSE)){
@@ -679,7 +752,7 @@ if(any(other_keys!=FALSE)){
     other_col <- unique(coldata[[other_keys[i]]])
     other_color <- brewer.pal(length(unique(other_col)), "Set1")
     if(length(other_col) < 3){
-      other_color <- other_color[1:2]
+      other_color <- c("#03bfc4ff", "#f8766dff")
     }
     names(other_color) <- other_col
     ann_colors[[other_keys[i]]] <- other_color
@@ -691,7 +764,11 @@ topVarGenes <- order(-rowVars(assay(obj)))[0:200]
 select <- order(rowMeans(counts(dds,normalized=TRUE)),
                 decreasing=TRUE)[1:200]
 
-pheatmap(assay(obj)[topVarGenes,],cluster_rows=FALSE, show_rownames=FALSE, cluster_cols=TRUE, annotation_col=df, annotation_colors = ann_colors, main=sprintf("heatmap - %s",used))
+# topRank <- assay(obj)[rownames(assay(obj)) %in% rownames(resOrdered)[0:200],]
+
+topRank <- match(rownames(resOrdered)[0:200],rownames(assay(obj)))
+
+pheatmap(assay(obj)[topRank,],cluster_rows=FALSE, show_rownames=FALSE, cluster_cols=TRUE, annotation_col=df, annotation_colors = ann_colors, main=sprintf("Heatmap - %s \n - %s",used,compared))
 
 ```
 
@@ -701,7 +778,7 @@ Here we produce such a heatmap for various transformations of the data.
 Another use of the transformed data is sample clustering. We apply the dist function to the transpose of the transformed count matrix to get sample-to-sample distances.")
 ```
 
-```{r plot_heatmapsample_to_sample_distance, eval=plot_sample_clustering}
+```{r plot_heatmapsample_to_sample_distance, eval=plot_sample_clustering, fig.width=10, fig.height=6, dpi=300}
 sampleDists <- dist(t(assay(obj)))
 sampleDistMatrix <- as.matrix(sampleDists)
 rownames(sampleDistMatrix) <- paste(obj[[comparison_key]])
@@ -709,9 +786,9 @@ colnames(sampleDistMatrix) <- paste(colnames(obj))
 pheatmap(sampleDistMatrix, clustering_distance_rows=sampleDists, clustering_distance_cols=sampleDists,main=sprintf("Euclidean distance - %s",used))
 ```
 
-# GSEA 
 
-```{r gsea}
+
+```{r gsea, eval=performing_gsea}
 
 gene_list <- read.csv(tsv_allGenes, sep="\t", row.names=1)
 
@@ -755,7 +832,7 @@ ggplot(fgseaResTidy[((length_fgsea-9):length_fgsea),], aes(reorder(pathway, NES)
 
 ```
 
-
+# More detailed information
 ## Results
 Results tables are generated using the function results, which extracts a results table with log2 fold changes, 
 p values and adjusted p values. With no additional arguments to results, the log2 fold change and Wald test 
@@ -848,7 +925,7 @@ plot(metadata(res)$filterNumRej,
      xlab="quantiles of filter")
 lines(metadata(res)$lo.fit, col="red")
 abline(v=metadata(res)$filterTheta)
-resNoFilt <- results(dds, alpha=alpha, lfcThreshold=min_logfc_for_stat_test, contrast=contrast, independentFiltering=FALSE)
+resNoFilt <- results(dds, alpha=alpha, lfcThreshold=min_logfc_for_stat_test, , altHypothesis="greaterAbs", contrast=contrast, independentFiltering=FALSE)
 addmargins(table(filtering=(res$padj < alpha),
                  noFiltering=(resNoFilt$padj < alpha)))
 ```
