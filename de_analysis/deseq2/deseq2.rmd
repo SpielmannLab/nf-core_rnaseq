@@ -110,7 +110,7 @@ coldata <- coldata %>%
     mutate(color = colors[.data[[comparison_key]]])
 
 
-#color adaping 
+# --- color adaping if specific colors should be used
 # comp_col <- unique(coldata[[comparison_key]])
 # comp_col <- factor(conditions_ordered)
 # colors <- c("#999999ff","#408002ff","#0f80ffff","#074080ff")
@@ -319,7 +319,6 @@ if (detect_sample_outliers) {
     RLE_before <- result[[1]]
     cts <- result[[3]]
     outliers <- result[[4]]
-    #ifelse(any(outliers>1), title = "RLE scores", title = "RLE scores with marked outliers")
 
     # Plot RLE distribution using ggplot2, before outlier removal    
     df_rle_scores_before <- RLE_before %>%
@@ -764,8 +763,6 @@ topVarGenes <- order(-rowVars(assay(obj)))[0:200]
 select <- order(rowMeans(counts(dds,normalized=TRUE)),
                 decreasing=TRUE)[1:200]
 
-# topRank <- assay(obj)[rownames(assay(obj)) %in% rownames(resOrdered)[0:200],]
-
 topRank <- match(rownames(resOrdered)[0:200],rownames(assay(obj)))
 
 pheatmap(assay(obj)[topRank,],cluster_rows=FALSE, show_rownames=FALSE, cluster_cols=TRUE, annotation_col=df, annotation_colors = ann_colors, main=sprintf("Heatmap - %s \n - %s",used,compared))
@@ -1007,7 +1004,6 @@ if(any(perform_batch_correction == "RUV")){
   
   deg_results_ruv <- calculate_DEG(res = resruv, name)
   deg_names_ruv <- deg_results_ruv[[1]]
-  #plotting_counts(ddsruv,deg_names_ruv)
   listing_genes(resruv, name)
 }
 ```
@@ -1041,9 +1037,6 @@ if(any(perform_batch_correction == "SVA")){
   
   deg_results_sva <- calculate_DEG(res = ressva, name)
   deg_names_sva <- deg_results_sva[[1]]
-  #plotting_counts(ddssva,deg_names_sva)
   listing_genes(ressva, name)
 }
 ```
-
-
