@@ -40,6 +40,7 @@ message("alternate_condition_B: ",alternate_condition_B)
 if(any(other_keys!=FALSE)){
   message("other_keys: ",other_keys)
 }
+
 ```
 
 ```{r, results='asis'}
@@ -85,7 +86,6 @@ if(any(other_keys!=FALSE)){
     cts$samples[[other_keys]] <- coldata[[other_keys]]
   }
 }
-#coldata[[comparison_key]] <- relevel(coldata[[comparison_key]],ref = reference_condition)
 
 cts$samples$group <- coldata[[comparison_key]]
 cts$samples$norm.factors <- 1
@@ -101,6 +101,14 @@ names(colors) <- comp_col
 coldata <- coldata %>%
     mutate(color = colors[.data[[comparison_key]]])
 
+# --- color adaping if specific colors should be used
+# comp_col <- unique(coldata[[comparison_key]])
+# comp_col <- factor(conditions_ordered)
+# colors <- c("#999999ff","#408002ff","#0f80ffff","#074080ff")
+# names(colors) <- comp_col
+# coldata <- coldata %>%
+#     mutate(color = colors[.data[[comparison_key]]])
+
 ```
 
 ```{r printing_counts_coldata, echo=TRUE, messages=TRUE}
@@ -115,6 +123,7 @@ compared_B <- sprintf("%s-%s", reference_condition_B, alternate_condition_B)
 compared <- c(compared_A, compared_B)
 
 contrast <- sprintf("%s * vs * %s", compared_A, compared_B)
+
 ```
 
 
@@ -151,14 +160,14 @@ calculate_DEG <- function(res = res, name = name){
       mutate(gene_name = c(rownames(DEGs_res_df))) %>%
       relocate(gene_name, .before=1)
     tsv_DEG <- sprintf("%s/DEG_list_%s.tsv", outdir, name)
-    write.table(DEGs_res, tsv_DEG, sep="\t", row.names = FALSE)
+    write.table(DEGs_res_df, tsv_DEG, sep="\t", row.names = FALSE)
   }
 }
 
 listing_genes <- function(res = res, name = name){
   if(list_all_genes){
     res_df <- as.data.frame(res)  %>%
-        mutate(gene_name = c(rownames(res_df))) %>%
+        mutate(gene_name = c(rownames(res))) %>%
         relocate(gene_name, .before=1)
     tsv_allGenes <- sprintf("%s/geneList_%s.tsv", outdir, name)
     write.table(res_df, tsv_allGenes, sep="\t", row.names = FALSE)
@@ -183,12 +192,14 @@ perform_pca <- function(pcaData = pcaData, x=x, y=y, title = title){
       plot_pca <- ggplot(pcaData, aes(x=.data[[x]], y=.data[[y]], color=.data[[comparison_key]], shape=.data[[other_keys[1]]], label=rownames(coldata)), returnData=TRUE) +
         geom_point(size=4) +
         geom_text(size=2,colour="black") +
+        theme_bw() +
         scale_color_manual(breaks = coldata[[comparison_key]], values = coldata$color) +
         labs(x = x_lab, y = y_lab, title = paste0("PCA - ",title))
     } else{
       plot_pca <- ggplot(pcaData, aes(x=.data[[x]], y=.data[[y]], color=.data[[comparison_key]], label=rownames(coldata)), returnData=TRUE) +
         geom_point(size=4) +
         geom_text(size=2,colour="black") +
+        theme_bw() +
         scale_color_manual(breaks = coldata[[comparison_key]], values = coldata$color) +
         labs(x = x_lab, y = y_lab, title = paste0("PCA - ",title))
     }
@@ -211,6 +222,7 @@ plotting_density <- function(data = data, cutoff=cutoff, title=title){
   density_plot <- ggplot(density_data, aes(x=x, y=y, color = sample)) +
     geom_line() +
     labs(title = title, x = deparse(substitute(data)), y="Density") +
+    theme_bw() +
     geom_vline(xintercept = cutoff, linetype = "dashed") +
     annotate("text", x=cutoff, y = max(density_data$y), label=deparse(substitute(cutoff)))
     theme_minimal()
@@ -356,7 +368,6 @@ plotting_density(lcpm, lcpm_cutoff, title="B. Filtered dat")
 
 
 ```{r Normalising gene expression distributions}
-# QUESTION: Do we even need these?
 
 cat("## Normalising gene expression distributions \n
 Any plot showing the per sample expression distributions, such as a density or boxplot, is useful in determining whether any samples are dissimilar to others. Distributions of log-CPM values are similar throughout all samples within this dataset (panel B of the figure above).
@@ -385,9 +396,10 @@ with subsequent dimensions having a smaller effect and being orthogonal to the o
 If samples cluster by a given factor in any of these dimensions, it suggests that the factor contributes to expression differences and is worth including in the linear modelling. 
 On the other hand, factors that show little or no effect may be left out of downstream analysis.
 ")
+par(mar=c(5, 5, 4, 12), xpd=TRUE)
 plotMDS(lcpm, labels=rownames(coldata), col=coldata$color)
 title(main="A. Sample groups")
-legend("top", legend = unique(coldata[[comparison_key]]), pch=16, col= unique(colors[coldata[[comparison_key]]]), cex=.8, ncol=2)
+legend("right", legend = unique(coldata[[comparison_key]]), pch=16, col= unique(colors[coldata[[comparison_key]]]), cex=.8, ncol=1, xpd=TRUE, inset=c(-0.65,0))
 if(any(other_keys!=FALSE)){
   for(i in 1:length(other_keys)){
     plotMDS(lcpm, labels=coldata[[other_keys[i]]])
@@ -450,28 +462,10 @@ common_genes <- head(tfit$genes[de_common,], n=20)
 vennDiagram(dt[,1:2], circle.col=c("turquoise", "salmon"), names=c("A","B"))
 legend("top", legend = contrast, pch=16, col=c("turquoise", "salmon"), title = contrast)
 
-
-#de_common_df <- data.frame(Contrast=sapply(contrast, toString), Gene=sapply(common_genes, toString))
-
 write.fit(tfit, dt, file="results.txt")
 
 ```
 
-## Histogram of p values for all tests.
-
-```{r hist_pvalues, messages=TRUE}
-par(mfrow=c(1,2), mar = c(5,4,4,2))
-hist(efit$p.value[,1], breaks=0:40/40, main=sprintf("%s \n - efit",compared_A), xlim=c(0,1), xlab="p-value")
-hist(efit$p.value[,2], breaks=0:40/40, main=sprintf("%s \n - efit",compared_B), xlim=c(0,1), xlab="p-value")
-print(sprintf("DEGs of efit with p-value < %g of %s: %d", alpha,compared_A,sum(efit$p.value[,1] < alpha, na.rm=TRUE)))
-print(sprintf("DEGs of efit with p-value < %g of %s: %d", alpha,compared_B,sum(efit$p.value[,2] < alpha, na.rm=TRUE)))
-
-hist(tfit$p.value[,1], breaks=0:40/40, main=sprintf("%s \n - tfit",compared_A), xlim=c(0,1), xlab="p-value")
-hist(tfit$p.value[,2], breaks=0:40/40, main=sprintf("%s \n - tfit",compared_B), xlim=c(0,1), xlab="p-value")
-print(sprintf("DEGs of tfit with p-value < %g of %s: %d", alpha,compared_A,sum(tfit$p.value[,1] < alpha, na.rm=TRUE)))
-print(sprintf("DEGs of tfit with p-value < %g of %s: %d", alpha,compared_B,sum(tfit$p.value[,2] < alpha, na.rm=TRUE)))
-
-```
 ## Examining individual DE genes from top to bottom
 The top DE genes can be listed using topTreat for results using treat (or topTable for results using eBayes). 
 By default topTreat arranges genes from smallest to largest adjusted p-value with associated gene information, log-FC, average log-CPM, moderated t-statistic, raw and adjusted p-value for each gene. 
@@ -488,6 +482,27 @@ res_A_efit <- topTable(efit, coef=1, n=Inf)
 head(res_A_efit)
 res_B_efit <- topTable(efit, coef=2, n=Inf)
 head(res_B_efit)
+
+```
+
+## Histogram of p values for all tests.
+
+```{r hist_pvalues, messages=TRUE}
+par(mfrow=c(1,2), mar = c(5,4,4,2))
+hist(efit$p.value[,1], breaks=0:40/40, main=sprintf("%s - vs -\n %s \n - efit",reference_condition_A, alternate_condition_A), xlim=c(0,1), cex.main=.65, xlab="p-value")
+hist(efit$p.value[,2], breaks=0:40/40, main=sprintf("%s - vs -\n %s \n - efit",reference_condition_B, alternate_condition_B), xlim=c(0,1), cex.main=.65, xlab="p-value")
+print(sprintf("DEGs of efit with p-value < %g of %s: %d", alpha,compared_A,sum(efit$p.value[,1] < alpha, na.rm=TRUE)))
+print(sprintf("DEGs of efit with p-value < %g of %s: %d", alpha,compared_B,sum(efit$p.value[,2] < alpha, na.rm=TRUE)))
+
+hist(tfit$p.value[,1], breaks=0:40/40, main=sprintf("%s - vs -\n %s \n - tfit",reference_condition_A, alternate_condition_A), xlim=c(0,1), cex.main=.65, xlab="p-value")
+hist(tfit$p.value[,2], breaks=0:40/40, main=sprintf("%s - vs -\n %s \n - tfit",reference_condition_B, alternate_condition_B), xlim=c(0,1), cex.main=.65, xlab="p-value")
+print(sprintf("DEGs of tfit with p-value < %g of %s: %d", alpha,compared_A,sum(tfit$p.value[,1] < alpha, na.rm=TRUE)))
+print(sprintf("DEGs of tfit with p-value < %g of %s: %d", alpha,compared_B,sum(tfit$p.value[,2] < alpha, na.rm=TRUE)))
+
+hist(res_A$adj.P.Val, breaks=0:40/40, main=sprintf("%s - vs -\n %s \n ",reference_condition_A, alternate_condition_A), xlim=c(0,1), cex.main=.65, xlab="adjusted p-value")
+hist(res_B$adj.P.Val, breaks=0:40/40, main=sprintf("%s - vs -\n %s \n ",reference_condition_B, alternate_condition_B), xlim=c(0,1), cex.main=.65, xlab="adjusted p-value")
+print(sprintf("DEGs of tfit with adjusted p-value < %g of %s: %d", alpha,compared_A,sum(res_A$adj.P.Val < alpha, na.rm=TRUE)))
+print(sprintf("DEGs of tfit with adjusted p-value < %g of %s: %d", alpha,compared_B,sum(res_B$adj.P.Val < alpha, na.rm=TRUE)))
 
 ```
 
@@ -516,24 +531,6 @@ if(list_all_genes){
 
 ```
 
-# GSEA 
-```{r gsea}
-performing_gsea(tsv_allGenes_A, compared_A)
-performing_gsea(tsv_allGenes_B, compared_B)
-
-#gene sets
-idx <- ids2indices(msigdbr_list,id=rownames(v)) 
-cam_A <- camera(v,idx,design,contrast=contr.matrix[,1])
-head(cam_A,5)
-cam_B <- camera(v,idx,design,contrast=contr.matrix[,2])
-head(cam_B,5)
-
-# ??????
-barcodeplot(efit$t[,1], index=idx[[rownames(cam_A[1,])]], index2=idx[[rownames(cam_A[2,])]], main=compared_A)
-barcodeplot(efit$t[,1], index=idx[[rownames(cam_B[1,])]], index2=idx[[rownames(cam_B[2,])]], main=compared_B)
-```
-
-
 ## Useful graphical representations of differential expression results
 To summarise results for all genes visually, mean-difference plots, which display log-FCs from the linear model fit against the average log-CPM values can be generated using the plotMD function, with the differentially expressed genes highlighted.
 ```{r Useful graphical representations of differential expression results}
@@ -544,18 +541,18 @@ To summarise results for all genes visually, mean-difference plots, which displa
   glMDPlot(tfit, coef=2, status=dt, main=colnames(tfit)[2], side.main="gene_name", counts=lcpm, groups=comparison_key, launch=FALSE)
 
 # heatmap
-a_topgenes <- res_A$gene_name[1:100] #first 100 top-ranked genes from a linear model fit
+a_topgenes <- res_A$gene_name[1:200] #first 100 top-ranked genes from a linear model fit
 i_a <- which(v$genes$gene_name %in% a_topgenes)
 mycol <- colorpanel(1000,"blue","white","red")
 heatmap.2(lcpm[i_a,], scale="row",
-   labCol=rownames(coldata), labRow = NULL,
+   labCol=rownames(coldata), labRow = FALSE,
    col=mycol, trace="none", density.info="none", dendrogram="column", main=compared_A)
 
-b_topgenes <- res_B$gene_name[1:100]
+b_topgenes <- res_B$gene_name[1:200]
 i_b <- which(v$genes$gene_name %in% b_topgenes)
 mycol <- colorpanel(1000,"blue","white","red")
 heatmap.2(lcpm[i_b,], scale="row",
-  labCol=rownames(coldata), labRow = NULL,
+  labCol=rownames(coldata), labRow = FALSE,
   col=mycol, trace="none", density.info="none", dendrogram="column", main=compared_B)
 
 ann_colors <- list()
@@ -566,7 +563,7 @@ if(any(other_keys!=FALSE)){
     other_col <- unique(coldata[[other_keys[i]]])
     other_color <- brewer.pal(length(unique(other_col)), "Set1")
     if(length(other_col) < 3){
-      other_color <- other_color[1:2]
+      other_color <-  c("#03bfc4ff", "#f8766dff")
     }
     names(other_color) <- other_col
     ann_colors[[other_keys[i]]] <- other_color
@@ -575,9 +572,7 @@ if(any(other_keys!=FALSE)){
   df <- as.data.frame(coldata[comparison_key])
 }
 
-pheatmap(lcpm[i_b,],cluster_rows=FALSE, show_rownames=TRUE, fontsize_row=5, cluster_cols=TRUE, annotation_col=df, annotation_colors = ann_colors, main=sprintf("heatmap"))
-
-
-
+pheatmap(lcpm[i_a,],cluster_rows=FALSE, show_rownames=FALSE, fontsize_row=5, cluster_cols=TRUE, annotation_col=df, annotation_colors = ann_colors, main=sprintf("Heatmap - Limma \n - %s", compared_A))
+pheatmap(lcpm[i_b,],cluster_rows=FALSE, show_rownames=FALSE, fontsize_row=5, cluster_cols=TRUE, annotation_col=df, annotation_colors = ann_colors, main=sprintf("Heatmap - Limma \n - %s", compared_B))
 
 ```
