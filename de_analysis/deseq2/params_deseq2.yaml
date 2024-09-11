@@ -17,6 +17,7 @@ alternate_condition: "B" # condition to be examined compared to the reference_co
 other_keys: false # The first is used as a second differentiation option in the PCAplot - shown as shapes
 
 # GSEA
+performing_gsea: false # <true|false> choose whether or not to perform GSEA
 species: "mouse" # which species the pathways for the GSEA should belong to
 
 # Pre-filtering limits
