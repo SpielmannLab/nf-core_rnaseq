@@ -787,7 +787,9 @@ pheatmap(sampleDistMatrix, clustering_distance_rows=sampleDists, clustering_dist
 
 ```{r gsea, eval=performing_gsea}
 
-gene_list <- read.csv(tsv_allGenes, sep="\t", row.names=1)
+gene_list <- read.csv(tsv_allGenes, sep="\t", row.names=1) %>%
+        mutate(gene_name = c(rownames(res))) %>%
+        relocate(gene_name, .before=1)
 
 gene_list_df <- gene_list %>% 
   dplyr::select(gene_name, stat) %>% 
