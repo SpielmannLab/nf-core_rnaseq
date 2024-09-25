@@ -49,7 +49,7 @@ if(any(other_keys!=FALSE)){
 ```
 
 ```{r writing_used_params}
-setwd(outdir)
+# setwd(outdir)
 filename <- sprintf("used_parameters_%s_vs_%s.txt", alternate_condition, reference_condition)
 con <- file(filename, "w")
 write_yaml(params, file=filename)
@@ -749,7 +749,7 @@ if(any(other_keys!=FALSE)){
   df <- as.data.frame(colData(obj)[c(comparison_key,other_keys)])
   for(i in 1:length(other_keys)){
     other_col <- unique(coldata[[other_keys[i]]])
-    other_color <- brewer.pal(length(unique(other_col)), "Set1")
+    other_color <- colorRampPalette(brewer.pal(9, "Set1"))(length(unique(other_col)))
     if(length(other_col) < 3){
       other_color <- c("#03bfc4ff", "#f8766dff")
     }
@@ -811,6 +811,11 @@ fgseaResTidy <- fgseaRes %>%
   arrange(desc(NES))
 
 length_fgsea <- nrow(fgseaResTidy)
+
+
+tsv_gsea <- sprintf("%s/gsea_list_%s.tsv", outdir, "test_gsea")
+write.table(fgseaResTidy, tsv_gsea, sep="\t", row.names = FALSE)
+
 
 ggplot(fgseaResTidy[1:10,], aes(reorder(pathway, NES), NES)) +
   geom_col(aes(fill=padj<alpha)) +
