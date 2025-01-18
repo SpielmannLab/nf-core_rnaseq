@@ -75,7 +75,7 @@ if(any(perform_batch_correction!=FALSE)){
 }
 
 contrast <- list()
-contrast <- c(comparison_key, reference_condition, alternate_condition)
+contrast <- c(comparison_key, alternate_condition, reference_condition)
 coef <- sprintf("%s_%s", comparison_key, compared)
 ```
 
@@ -85,7 +85,7 @@ We examine the count matrix and column data to see if they are consistent in ter
 
 ```{r building_coldata_cts, include=FALSE, message=TRUE}
 # --- forming count and coldata
-cts <- read.csv(count_data, sep = "\t", row.names = 1)
+cts <- read.csv(count_data, sep = "\t", row.names = "gene_id")
 coldata <- read.csv(metadata, row.names = 1) %>%
     dplyr::select(any_of(c(comparison_key, other_keys))) %>%
     dplyr::arrange(.data[[comparison_key]])
@@ -97,6 +97,7 @@ if(any(other_keys!=FALSE)){
 }
 coldata[[comparison_key]] <- relevel(coldata[[comparison_key]], ref = reference_condition)
 
+# This gets rid of the gene name column
 cts <- cts[, rownames(coldata)]
 if(!all(rownames(coldata) == colnames(cts))){
   stop("Rownames of coldata don't align with colnames of cts. Check the samplenames and their order in metadata and count_data.")
@@ -142,7 +143,7 @@ check_n_remove_outliers <- function(cts = cts, coldata = coldata) {
     names()
   to_keep <- rle_stddevs[rle_stddevs <= 1] %>%
     names()
-  if(remove_sample_outliers){
+  if(detect_sample_outliers){
     coldata <- coldata[to_keep, ]
     cts <- cts[, to_keep]
   }
@@ -470,29 +471,20 @@ if(PCA){
 ```{r lfc_shrink_MA_plot}
 
 ###############
-# MA
+# Shrink log fold change
 ###############
 
-if(plot_MA_before_LFCshrink | shrink_LFC_using!=FALSE){
-#the function plotMA shows the log2 fold changes attributable to a given variable over the mean of normalized counts for all the samples in the DESeqDataSet
-  ylim <- c(-3,3)
-
-  if(shrink_LFC_using!=FALSE){
-    if(shrink_LFC_using == "apeglm"){
-      resLFC <- lfcShrink(dds, coef = coef,type="apeglm", lfcThreshold=min_logfc_for_stat_test)
-      res_shrink <- resLFC
-    }
-
-    if(shrink_LFC_using == "ashr"){
-      resAsh <- lfcShrink(dds, coef = coef, type="ashr", lfcThreshold=min_logfc_for_stat_test)
-      res_shrink <- resAsh
-    }
-
-    if(shrink_LFC_using == "normal"){
-      resNorm <- lfcShrink(dds, coef = coef, type="normal", lfcThreshold=min_logfc_for_stat_test)
-      res_shrink <- resNorm
-    }
-  }
+if(shrink_LFC_using == "apeglm"){
+  resLFC <- lfcShrink(dds, coef = coef,type="apeglm", lfcThreshold=min_logfc_for_stat_test)
+  res_shrink <- resLFC
+}
+if(shrink_LFC_using == "ashr"){
+  resAsh <- lfcShrink(dds, coef = coef, type="ashr", lfcThreshold=min_logfc_for_stat_test)
+  res_shrink <- resAsh
+}
+if(shrink_LFC_using == "normal"){
+  resNorm <- lfcShrink(dds, coef = coef, type="normal", lfcThreshold=min_logfc_for_stat_test)
+  res_shrink <- resNorm
 }
 ```
 
@@ -680,36 +672,34 @@ if(shrink_LFC_using!=FALSE){
 ```{r lfc_shrink_MA_ploting, fig.width=10, fig.height=6, dpi=300}
 par(mfrow=c(1,2), mar = c(5,4,4,2))
 
-if(plot_MA_before_LFCshrink | shrink_LFC_using!=FALSE){
+if(plot_MA_before_LFCshrink){
 #the function plotMA shows the log2 fold changes attributable to a given variable over the mean of normalized counts for all the samples in the DESeqDataSet
   ylim <- c(-3,3)
 # --- before shrinkage
-  if(plot_MA_before_LFCshrink){  
+  if(plot_MA_before_LFCshrink) {  
     MA_plot_before <- DESeq2::plotMA(res, ylim=ylim, main=paste0(compared, " - no shrinkage"), cex.main=.65)
     abline(h=c(-min_logfc_for_stat_test,min_logfc_for_stat_test), col="dodgerblue", lwd=2)
   }
 
 # --- shrinkage
-  if(shrink_LFC_using!=FALSE){
-    if(shrink_LFC_using == "apeglm"){
-      if(plot_MA_after_LFCshrink){
-        MA_plot_after <- DESeq2::plotMA(resLFC, ylim=ylim, main=paste0(compared, " - apeglm"), cex.main=.65)
-        abline(h=c(-min_logfc_for_stat_test,min_logfc_for_stat_test), col="dodgerblue", lwd=2)
-      }
+  if(shrink_LFC_using == "apeglm"){
+    if(plot_MA_after_LFCshrink){
+      MA_plot_after <- DESeq2::plotMA(resLFC, ylim=ylim, main=paste0(compared, " - apeglm"), cex.main=.65)
+      abline(h=c(-min_logfc_for_stat_test,min_logfc_for_stat_test), col="dodgerblue", lwd=2)
     }
+  }
 
-    if(shrink_LFC_using == "ashr"){
-      if(plot_MA_after_LFCshrink){
-        MA_plot_after <- DESeq2::plotMA(resAsh, ylim=ylim, main=paste0(compared, " - ashr"), cex.main=.65)
-        abline(h=c(-min_logfc_for_stat_test,min_logfc_for_stat_test), col="dodgerblue", lwd=2)
-      }
+  if(shrink_LFC_using == "ashr"){
+    if(plot_MA_after_LFCshrink){
+      MA_plot_after <- DESeq2::plotMA(resAsh, ylim=ylim, main=paste0(compared, " - ashr"), cex.main=.65)
+      abline(h=c(-min_logfc_for_stat_test,min_logfc_for_stat_test), col="dodgerblue", lwd=2)
     }
+  }
 
-    if(shrink_LFC_using == "normal"){
-      if(plot_MA_after_LFCshrink){
-        MA_plot_after <- DESeq2::plotMA(resNorm, ylim=ylim, main=paste0(compared, " - normal"), cex.main=.65)
-        abline(h=c(-min_logfc_for_stat_test,min_logfc_for_stat_test), col="dodgerblue", lwd=2)
-      }
+  if(shrink_LFC_using == "normal"){
+    if(plot_MA_after_LFCshrink){
+      MA_plot_after <- DESeq2::plotMA(resNorm, ylim=ylim, main=paste0(compared, " - normal"), cex.main=.65)
+      abline(h=c(-min_logfc_for_stat_test,min_logfc_for_stat_test), col="dodgerblue", lwd=2)
     }
   }
 }
@@ -783,57 +773,41 @@ colnames(sampleDistMatrix) <- paste(colnames(obj))
 pheatmap(sampleDistMatrix, clustering_distance_rows=sampleDists, clustering_distance_cols=sampleDists,main=sprintf("Euclidean distance - %s",used))
 ```
 
+```{r gsea, eval=perform_gsea}
+gene_ranks <- res_shrink %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column(var = "gene") %>%
+  filter(!is.na(padj)) %>%
+  arrange(desc(log2FoldChange)) %>%
+  select(gene, log2FoldChange) %>%
+  tibble::deframe()
 
+pathways <- msigdbr(species = species) %>%
+  filter(grepl(pattern = geneset_subset_pattern, .data[[geneset_subset_keys]], ignore.case = TRUE)) %>%
+  base::split(x = .$ensembl_gene, f = .$gs_name)
 
-```{r gsea, eval=performing_gsea}
+fgseaRes <- fgsea(pathways = pathways,
+	stats = gene_ranks,
+	minSize  = geneset_minsize,
+	maxSize  = geneset_maxsize)
 
-gene_list <- read.csv(tsv_allGenes, sep="\t", row.names=1) %>%
-        mutate(gene_name = c(rownames(res))) %>%
-        relocate(gene_name, .before=1)
+rds_gsea <- sprintf("%s/fgsea_significant_genesets_%s_%s.rds", outdir, geneset_subset_keys, geneset_subset_pattern)
+saveRDS(fgseaRes,file = rds_gsea)
 
-gene_list_df <- gene_list %>% 
-  dplyr::select(gene_name, stat) %>% 
-  na.omit() %>% 
-  distinct() %>% 
-  group_by(gene_name) %>% 
-  summarize(stat=mean(stat))
+fgsea_significant <- fgseaRes %>%
+  filter(padj <= alpha)
 
-ranks <- tibble::deframe(gene_list_df)
+# Save table of collapsed pathways 
+collapsedPathways <- collapsePathways(fgseaRes = fgsea_significant, 
+  pathways = pathways,
+  stats = gene_ranks,
+  pval.threshold = alpha)
+mainPathways <- fgseaRes[pathway %in% collapsedPathways$mainPathways] %>%
+  arrange(desc(NES)) %>%
+	select(-where(is.list))
 
-all_gene_sets = msigdbr(species = species)
-head(all_gene_sets)
-
-msigdbr_list <- split(x = all_gene_sets$gene_symbol, f = all_gene_sets$gs_name)
-fgseaRes <- fgsea(pathways = msigdbr_list, stats=ranks)
-
-fgseaResTidy <- fgseaRes %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-length_fgsea <- nrow(fgseaResTidy)
-
-
-tsv_gsea <- sprintf("%s/gsea_list_%s.tsv", outdir, "test_gsea")
-write.table(fgseaResTidy, tsv_gsea, sep="\t", row.names = FALSE)
-
-
-ggplot(fgseaResTidy[1:10,], aes(reorder(pathway, NES), NES)) +
-  geom_col(aes(fill=padj<alpha)) +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title="pathways NES from GSEA") + 
-  theme_minimal() +
-  coord_fixed()
-
-ggplot(fgseaResTidy[((length_fgsea-9):length_fgsea),], aes(reorder(pathway, NES), NES)) +
-  geom_col(aes(fill=padj<alpha)) +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-      title="pathways NES from GSEA") + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
-  theme_minimal() +
-  coord_fixed()
-
-
+tsv_gsea <- sprintf("%s/fgsea_significant_genesets_%s_%s.tsv", outdir, geneset_subset_keys, geneset_subset_pattern)
+write.table(mainPathways, tsv_gsea, sep="\t", row.names = FALSE)
 ```
 
 # More detailed information

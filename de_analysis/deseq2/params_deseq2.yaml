@@ -15,34 +15,31 @@ alternate_condition: "B" # condition to be examined compared to the reference_co
 
 # Provide as many other columns containing sample information that could cause variability in expression. Comma separated
 other_keys: false # The first is used as a second differentiation option in the PCAplot - shown as shapes
-
 # GSEA
-performing_gsea: false # <true|false> choose whether or not to perform GSEA
+perform_gsea: true # <true|false> choose whether or not to perform GSEA
 species: "mouse" # which species the pathways for the GSEA should belong to
-
+geneset_subset_keys: "gs_cat" # subsetting of gensets possible by gs_cat, gs_subcat, gs_name, gene_symbol
+geneset_subset_pattern: "H" # pattern is passed to grepl. Not regex
+geneset_minsize: 15
+geneset_maxsize: 500
 # Pre-filtering limits
-minSamples: 8 # Minimum amount of samples for which the minimum number of counts applies as a criterion. Should correspond to the smallest number of samples associated with a condition 
+minSamples: 8 # Minimum amount of samples for which the minimum number of counts applies as a criterion. Should correspond to the smallest number of samples associated with a condition
 minCounts: 10 # Minimum value of the sum of counts of a gene over the amount of samples provided in <minSamples> (sum of rows)
-
-# Threshold for p value to determine DEG
+# Threshold for p value to call significant. Applied to DE genes, GSEA, and GSEA collapse
 alpha: 0.1
-
 # Do you want to detect sample outliers based on Relative Log Fold Expression (RLE) between samples?
 detect_sample_outliers: true # options: <true|false>
 RLE_threshold_max: 1 # Set to a high value to not filter at all, but generate the plot anyway (when, detect_sample_outliers: true)
 RUV_threshold_not_sig: 0.5
-
 # Do you want to perform batch correction based on Surrogate Variables Analysis (SVA) or remove unwanted variation (RUV)?
 perform_batch_correction: "RUV,SVA" # options <false|"SVA"|"RUV"|"RUV,SVA">
 
 # Stabilizing variance (removing variance-mean dependency) is recommended for plotting (e.g., PCA, sample clustering etc.)
 # Note the variance stabilitation is by default blind to the model_design. This is not appropriate if genes are known to vary quite a bit between conditions
-perform_variance_stabilisation : "norm" # options <false|vst|norm|rlog>
+perform_variance_stabilisation: "vst" # options <false|vst|norm|rlog>
 do_blind_stabilization: true # options <true|false> Only applicable for vst and rlog
-
-# Which particular genes shall be plotted with plotCounts. 
+# Which particular genes shall be plotted with plotCounts.
 genes_of_interest: false # options Comma seperated string including the genes or <false>
-
 # What plots do you want?
 dispersion: true
 mean_vs_sd: true
@@ -60,10 +57,7 @@ normCounts_pvalue: true
 # Do you want to save the results as .xlsx files for all genees and for DE genes?
 list_all_genes: true
 list_DEG: true
-
 # Which log-fold-change shrinkage algorithm to use?
-shrink_LFC_using: "normal" # options <apeglm|normal|ashr|false>
-
+shrink_LFC_using: "normal" # options <apeglm|normal|ashr>
 # Limit statistical tests to only genes above a certain log-fold-change threshold?
-min_logfc_for_stat_test: 1 # Default is zero. Increase to reduce the number of test and therefore to get more hits
-
+min_logfc_for_stat_test: 0 # Default is zero. Increase to reduce the number of test and therefore to get more hits
